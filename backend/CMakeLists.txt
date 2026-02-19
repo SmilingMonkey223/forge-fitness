@@ -18,6 +18,12 @@ endif()
 # Dependencies
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
+
+# Phase 2 dependencies: OpenCV and ONNX Runtime
+# Try to find system packages first
+find_package(OpenCV QUIET COMPONENTS core imgproc imgcodecs)
+find_package(onnxruntime QUIET)
 
 # Try to find packages, fallback to FetchContent if not found
 include(FetchContent)
@@ -54,6 +60,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# stb_image for image decoding (single header library)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(stb)
+
 # Source files
 file(GLOB_RECURSE SOURCES
     src/*.cpp
@@ -75,9 +89,29 @@ target_link_libraries(forge_lib PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     Threads::Threads
+    CURL::libcurl
     pq
     pqxx
 )
+
+# Add stb_image include directory
+if(stb_SOURCE_DIR)
+    target_include_directories(forge_lib PUBLIC ${stb_SOURCE_DIR})
+endif()
+
+# Link OpenCV if found
+if(OpenCV_FOUND)
+    target_link_libraries(forge_lib PUBLIC ${OpenCV_LIBS})
+    target_compile_definitions(forge_lib PUBLIC HAS_OPENCV)
+    message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+endif()
+
+# Link ONNX Runtime if found
+if(onnxruntime_FOUND)
+    target_link_libraries(forge_lib PUBLIC onnxruntime::onnxruntime)
+    target_compile_definitions(forge_lib PUBLIC HAS_ONNXRUNTIME)
+    message(STATUS "ONNX Runtime found")
+endif()
 
 # Main executable
 add_executable(forge src/main.cpp)
