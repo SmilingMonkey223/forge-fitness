@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
+import { EnhancedDashboard } from './pages/EnhancedDashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import { WorkoutLogger } from './pages/WorkoutLogger'
@@ -45,6 +46,12 @@ function App() {
       />
       <Route
         path="/"
+        element={
+          isAuthenticated ? <EnhancedDashboard onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/dashboard-simple"
         element={
           isAuthenticated ? <Dashboard onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />
         }
