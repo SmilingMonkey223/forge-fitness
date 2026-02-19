@@ -2,6 +2,7 @@
 #include "../include/config.hpp"
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
+#include "../include/video_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -186,6 +187,92 @@ int main() {
                         {"message", e.what()}
                     }}
                 }).dump());
+            }
+        });
+
+        // Initialize services
+        forge::VideoService video_service(forge::Database::instance());
+
+        // Video endpoints
+        // GET /api/exercises/:exercise_id/videos
+        CROW_ROUTE(app, "/api/exercises/<string>/videos")
+        ([&video_service](const std::string& exercise_id) {
+            try {
+                auto videos = video_service.get_exercise_videos(exercise_id);
+
+                json response_data = json::array();
+                for (const auto& video : videos) {
+                    response_data.push_back(video.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"exercise_id", exercise_id},
+                    {"videos", response_data}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/videos/:video_id
+        CROW_ROUTE(app, "/api/videos/<string>")
+        ([&video_service](const std::string& video_id) {
+            try {
+                auto video_opt = video_service.get_video_by_id(video_id);
+
+                if (!video_opt) {
+                    return crow::response(404, json({
+                        {"error", {
+                            {"code", "NOT_FOUND"},
+                            {"message", "Video not found"}
+                        }}
+                    }).dump());
+                }
+
+                return crow::response(200, video_opt->to_json().dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // POST /api/videos/:video_id/view (track analytics)
+        CROW_ROUTE(app, "/api/videos/<string>/view").methods("POST"_method)
+        ([&video_service](const crow::request& req, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& video_id) {
+            try {
+                auto body = json::parse(req.body);
+                int watch_time = body.value("watch_time_seconds", 0);
+                bool completed = body.value("completed", false);
+
+                video_service.track_video_view(video_id, ctx.user_id, watch_time, completed);
+
+                res.write(json({
+                    {"success", true},
+                    {"message", "View tracked"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
             }
         });
 
