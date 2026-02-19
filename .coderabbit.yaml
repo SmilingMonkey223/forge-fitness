@@ -1,0 +1,50 @@
+# CodeRabbit Configuration for FORGE
+# https://docs.coderabbit.ai/guides/review-instructions
+
+language: en-US
+early_access: true
+reviews:
+  # Enable CodeRabbit reviews
+  enabled: true
+
+  # Review settings
+  auto_review:
+    enabled: true
+    drafts: false
+
+  # Review depth
+  profile: chill
+
+  # Focus areas
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+
+  # Specific checks
+  path_filters:
+    - "!backend/migrations/*.sql"  # Don't review migration files heavily
+    - "!frontend/node_modules/**"
+    - "!**/*.md"  # Light review on docs
+
+  # Code review instructions
+  instructions:
+    - Focus on security vulnerabilities (SQL injection, XSS, authentication issues)
+    - Check for C++ memory leaks and undefined behavior
+    - Verify React hooks dependencies are correct
+    - Ensure TypeScript strict mode compliance
+    - Check for performance issues (N+1 queries, unnecessary re-renders)
+    - Verify proper error handling
+    - Check that tests are included for new features
+    - Ensure code follows project conventions (see CONTRIBUTING.md)
+
+chat:
+  auto_reply: true
+
+# Ignore patterns
+ignore:
+  - "**/*.log"
+  - "**/*.lock"
+  - "build/**"
+  - "dist/**"
+  - "node_modules/**"
