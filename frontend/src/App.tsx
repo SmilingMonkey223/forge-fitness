@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import { WorkoutLogger } from './pages/WorkoutLogger'
 import { api } from './services/api'
 
 function App() {
@@ -44,6 +45,12 @@ function App() {
         path="/"
         element={
           isAuthenticated ? <Dashboard onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/workout"
+        element={
+          isAuthenticated ? <WorkoutLogger /> : <Navigate to="/login" />
         }
       />
     </Routes>

@@ -3,6 +3,8 @@
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
 #include "../include/video_service.hpp"
+#include "../include/plate_calculator.hpp"
+#include "../include/warmup_planner.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -273,6 +275,75 @@ int main() {
                     }}
                 }).dump());
                 res.end();
+            }
+        });
+
+        // Utility endpoints
+        // POST /api/utils/plate-calculator
+        CROW_ROUTE(app, "/api/utils/plate-calculator").methods("POST"_method)
+        ([](const crow::request& req) {
+            try {
+                auto body = json::parse(req.body);
+                double target_weight = body["target_weight"];
+                std::string units = body.value("units", "lbs");
+
+                // Select appropriate configuration
+                forge::PlateConfiguration config = (units == "kg") ?
+                    forge::PlateCalculator::standard_kg() :
+                    forge::PlateCalculator::standard_lbs();
+
+                // Allow custom bar weight if provided
+                if (body.contains("bar_weight")) {
+                    config.bar_weight = body["bar_weight"];
+                }
+
+                auto result = forge::PlateCalculator::calculate(target_weight, config);
+
+                return crow::response(200, result.to_json().dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // POST /api/utils/warmup-planner
+        CROW_ROUTE(app, "/api/utils/warmup-planner").methods("POST"_method)
+        ([](const crow::request& req) {
+            try {
+                auto body = json::parse(req.body);
+                double working_weight = body["working_weight"];
+                int working_reps = body.value("working_reps", 5);
+                double bar_weight = body.value("bar_weight", 45.0);
+
+                auto warmup_sets = forge::WarmupPlanner::generate_warmup(
+                    working_weight,
+                    working_reps,
+                    bar_weight
+                );
+
+                json warmup_json = json::array();
+                for (const auto& set : warmup_sets) {
+                    warmup_json.push_back(set.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"working_weight", working_weight},
+                    {"working_reps", working_reps},
+                    {"warmup_sets", warmup_json}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
             }
         });
 
