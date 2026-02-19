@@ -6,6 +6,7 @@
 #include "../include/plate_calculator.hpp"
 #include "../include/warmup_planner.hpp"
 #include "../include/program_service.hpp"
+#include "../include/social_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
