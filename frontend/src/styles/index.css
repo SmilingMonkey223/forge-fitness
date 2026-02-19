@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary font-sans;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold;
+  }
+
+  h1 {
+    @apply text-[28px];
+  }
+
+  h2 {
+    @apply text-[22px];
+  }
+
+  h3 {
+    @apply text-[18px];
+  }
+
+  input, textarea, button {
+    @apply outline-none;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-button font-medium transition-all duration-200;
+    @apply hover:scale-105 active:scale-95;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-white;
+    @apply hover:bg-opacity-90;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface text-text-primary border border-text-muted;
+    @apply hover:border-primary;
+  }
+
+  .card {
+    @apply bg-surface rounded-card shadow-card p-6;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 rounded-lg bg-surface-elevated text-text-primary;
+    @apply border border-text-muted focus:border-primary transition-colors;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-text-secondary mb-2;
+  }
+}
+
+@layer utilities {
+  .tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
