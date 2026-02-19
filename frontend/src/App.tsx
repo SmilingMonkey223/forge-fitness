@@ -7,6 +7,7 @@ import Register from './pages/Register'
 import { WorkoutLogger } from './pages/WorkoutLogger'
 import { ProgramBrowser } from './pages/ProgramBrowser'
 import { AICoachingSetup } from './pages/AICoachingSetup'
+import { Feed } from './pages/Feed'
 import { api } from './services/api'
 
 function App() {
@@ -72,6 +73,12 @@ function App() {
         path="/ai-coaching"
         element={
           isAuthenticated ? <AICoachingSetup /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/feed"
+        element={
+          isAuthenticated ? <Feed onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />
         }
       />
     </Routes>

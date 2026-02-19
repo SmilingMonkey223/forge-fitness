@@ -197,6 +197,7 @@ int main() {
         // Initialize services
         forge::VideoService video_service(forge::Database::instance());
         forge::ProgramService program_service(forge::Database::instance());
+        forge::SocialService social_service(forge::Database::instance());
 
         // Video endpoints
         // GET /api/exercises/:exercise_id/videos
@@ -591,6 +592,228 @@ int main() {
                     {"id", id},
                     {"message", "Check-in submitted successfully"}
                 }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // Social feed endpoints
+        // GET /api/social/feed/personalized
+        CROW_ROUTE(app, "/api/social/feed/personalized")
+        ([&social_service](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto limit_param = req.url_params.get("limit");
+                auto offset_param = req.url_params.get("offset");
+                int limit = limit_param ? std::stoi(limit_param) : 20;
+                int offset = offset_param ? std::stoi(offset_param) : 0;
+
+                auto posts = social_service.get_personalized_feed(ctx.user_id, limit, offset);
+
+                json posts_json = json::array();
+                for (const auto& post : posts) {
+                    posts_json.push_back(post.to_json());
+                }
+
+                res.write(json({{"posts", posts_json}}).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // GET /api/social/feed/latest
+        CROW_ROUTE(app, "/api/social/feed/latest")
+        ([&social_service](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto limit_param = req.url_params.get("limit");
+                auto offset_param = req.url_params.get("offset");
+                int limit = limit_param ? std::stoi(limit_param) : 20;
+                int offset = offset_param ? std::stoi(offset_param) : 0;
+
+                auto posts = social_service.get_latest_feed(ctx.user_id, limit, offset);
+
+                json posts_json = json::array();
+                for (const auto& post : posts) {
+                    posts_json.push_back(post.to_json());
+                }
+
+                res.write(json({{"posts", posts_json}}).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // POST /api/social/posts/:post_id/kudos
+        CROW_ROUTE(app, "/api/social/posts/<string>/kudos").methods("POST"_method)
+        ([&social_service](const crow::request&, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& post_id) {
+            try {
+                bool success = social_service.give_kudos(post_id, ctx.user_id);
+
+                res.write(json({
+                    {"success", success},
+                    {"message", success ? "Kudos given" : "Already given kudos"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // GET /api/social/posts/:post_id/comments
+        CROW_ROUTE(app, "/api/social/posts/<string>/comments")
+        ([&social_service](const std::string& post_id) {
+            try {
+                auto comments = social_service.get_post_comments(post_id);
+
+                json comments_json = json::array();
+                for (const auto& comment : comments) {
+                    comments_json.push_back(comment.to_json());
+                }
+
+                return crow::response(200, comments_json.dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // POST /api/social/posts/:post_id/comments
+        CROW_ROUTE(app, "/api/social/posts/<string>/comments").methods("POST"_method)
+        ([&social_service](const crow::request& req, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& post_id) {
+            try {
+                auto body = json::parse(req.body);
+                std::string content = body["content"];
+
+                std::string comment_id = social_service.add_comment(post_id, ctx.user_id, content);
+
+                res.code = 201;
+                res.write(json({
+                    {"id", comment_id},
+                    {"message", "Comment added"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // POST /api/social/follow/:user_id
+        CROW_ROUTE(app, "/api/social/follow/<string>").methods("POST"_method)
+        ([&social_service](const crow::request&, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& following_id) {
+            try {
+                bool success = social_service.follow_user(ctx.user_id, following_id);
+
+                res.write(json({
+                    {"success", success},
+                    {"message", success ? "User followed" : "Already following"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // DELETE /api/social/follow/:user_id
+        CROW_ROUTE(app, "/api/social/follow/<string>").methods("DELETE"_method)
+        ([&social_service](const crow::request&, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& following_id) {
+            try {
+                bool success = social_service.unfollow_user(ctx.user_id, following_id);
+
+                res.write(json({
+                    {"success", success},
+                    {"message", success ? "User unfollowed" : "Not following"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // GET /api/social/profile/:user_id
+        CROW_ROUTE(app, "/api/social/profile/<string>")
+        ([&social_service](const crow::request&, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& user_id) {
+            try {
+                auto profile = social_service.get_user_profile(user_id, ctx.user_id);
+
+                if (!profile) {
+                    res.code = 404;
+                    res.write(json({
+                        {"error", {
+                            {"code", "NOT_FOUND"},
+                            {"message", "Profile not found"}
+                        }}
+                    }).dump());
+                } else {
+                    res.write(profile->to_json().dump());
+                }
                 res.end();
 
             } catch (const std::exception& e) {
