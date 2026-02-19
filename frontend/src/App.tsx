@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import { WorkoutLogger } from './pages/WorkoutLogger'
+import { ProgramBrowser } from './pages/ProgramBrowser'
+import { AICoachingSetup } from './pages/AICoachingSetup'
 import { api } from './services/api'
 
 function App() {
@@ -51,6 +53,18 @@ function App() {
         path="/workout"
         element={
           isAuthenticated ? <WorkoutLogger /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/programs"
+        element={
+          isAuthenticated ? <ProgramBrowser /> : <Navigate to="/login" />
+        }
+      />
+      <Route
+        path="/ai-coaching"
+        element={
+          isAuthenticated ? <AICoachingSetup /> : <Navigate to="/login" />
         }
       />
     </Routes>

@@ -5,6 +5,7 @@
 #include "../include/video_service.hpp"
 #include "../include/plate_calculator.hpp"
 #include "../include/warmup_planner.hpp"
+#include "../include/program_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -194,6 +195,7 @@ int main() {
 
         // Initialize services
         forge::VideoService video_service(forge::Database::instance());
+        forge::ProgramService program_service(forge::Database::instance());
 
         // Video endpoints
         // GET /api/exercises/:exercise_id/videos
@@ -344,6 +346,261 @@ int main() {
                         {"message", e.what()}
                     }}
                 }).dump());
+            }
+        });
+
+        // Program endpoints
+        // GET /api/programs - List all programs
+        CROW_ROUTE(app, "/api/programs")
+        ([&program_service](const crow::request& req) {
+            try {
+                auto goal = req.url_params.get("goal");
+                auto level = req.url_params.get("experience_level");
+                auto official_only = req.url_params.get("official_only");
+
+                std::optional<std::string> goal_opt = goal ? std::optional<std::string>(goal) : std::nullopt;
+                std::optional<std::string> level_opt = level ? std::optional<std::string>(level) : std::nullopt;
+                bool official = official_only && std::string(official_only) == "true";
+
+                auto programs = program_service.get_all_programs(goal_opt, level_opt, official);
+
+                json programs_json = json::array();
+                for (const auto& program : programs) {
+                    programs_json.push_back(program.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"programs", programs_json}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/programs/:id - Get program details
+        CROW_ROUTE(app, "/api/programs/<string>")
+        ([&program_service](const std::string& program_id) {
+            try {
+                auto program = program_service.get_program_by_id(program_id);
+
+                if (!program) {
+                    return crow::response(404, json({
+                        {"error", {
+                            {"code", "NOT_FOUND"},
+                            {"message", "Program not found"}
+                        }}
+                    }).dump());
+                }
+
+                return crow::response(200, program->to_json().dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/programs/:id/workouts?week=1 - Get workouts for a week
+        CROW_ROUTE(app, "/api/programs/<string>/workouts")
+        ([&program_service](const crow::request& req, const std::string& program_id) {
+            try {
+                auto week_param = req.url_params.get("week");
+                int week = week_param ? std::stoi(week_param) : 1;
+
+                auto workouts = program_service.get_program_workouts(program_id, week);
+
+                json workouts_json = json::array();
+                for (const auto& workout : workouts) {
+                    workouts_json.push_back(workout.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"program_id", program_id},
+                    {"week_number", week},
+                    {"workouts", workouts_json}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // POST /api/coaching/questionnaire - Save AI coaching questionnaire
+        CROW_ROUTE(app, "/api/coaching/questionnaire").methods("POST"_method)
+        ([&program_service](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto body = json::parse(req.body);
+
+                forge::CoachingQuestionnaire q;
+                q.user_id = ctx.user_id;
+                q.experience_level = body["experience_level"];
+                q.years_training = body["years_training"];
+                q.current_frequency = body["current_frequency"];
+                q.primary_goal = body["primary_goal"];
+                if (body.contains("secondary_goal")) q.secondary_goal = body["secondary_goal"];
+                if (body.contains("goal_timeframe_weeks")) q.goal_timeframe_weeks = body["goal_timeframe_weeks"];
+                q.available_days_per_week = body["available_days_per_week"];
+                q.session_duration_minutes = body["session_duration_minutes"];
+                q.available_equipment = body.value("available_equipment", json::array());
+                if (body.contains("injuries_or_limitations")) q.injuries_or_limitations = body["injuries_or_limitations"];
+                q.exercises_to_avoid = body.value("exercises_to_avoid", json::array());
+                if (body.contains("preferred_rep_range")) q.preferred_rep_range = body["preferred_rep_range"];
+                if (body.contains("preferred_intensity")) q.preferred_intensity = body["preferred_intensity"];
+
+                std::string id = program_service.save_questionnaire(q);
+
+                res.code = 201;
+                res.write(json({
+                    {"id", id},
+                    {"message", "Questionnaire saved successfully"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // POST /api/coaching/generate-program - Generate program from questionnaire
+        CROW_ROUTE(app, "/api/coaching/generate-program").methods("POST"_method)
+        ([&program_service](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                std::string program_id = program_service.generate_program_from_questionnaire(ctx.user_id);
+
+                res.code = 201;
+                res.write(json({
+                    {"program_id", program_id},
+                    {"message", "Program generated and assigned successfully"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // GET /api/coaching/state - Get user coaching state
+        CROW_ROUTE(app, "/api/coaching/state")
+        ([&program_service](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto state = program_service.get_coaching_state(ctx.user_id);
+
+                if (!state) {
+                    res.write(json({
+                        {"mode", "tracker"},
+                        {"current_program_id", nullptr}
+                    }).dump());
+                } else {
+                    res.write(state->to_json().dump());
+                }
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // POST /api/coaching/start-program - Start a program
+        CROW_ROUTE(app, "/api/coaching/start-program").methods("POST"_method)
+        ([&program_service](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto body = json::parse(req.body);
+                std::string program_id = body["program_id"];
+
+                program_service.start_program(ctx.user_id, program_id);
+
+                res.write(json({
+                    {"success", true},
+                    {"message", "Program started successfully"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // POST /api/coaching/weekly-checkin - Submit weekly check-in
+        CROW_ROUTE(app, "/api/coaching/weekly-checkin").methods("POST"_method)
+        ([&program_service](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto body = json::parse(req.body);
+
+                forge::WeeklyCheckIn checkin;
+                checkin.user_id = ctx.user_id;
+                checkin.week_start = body["week_start"];
+                checkin.week_end = body["week_end"];
+                if (body.contains("hunger_rating")) checkin.hunger_rating = body["hunger_rating"];
+                if (body.contains("energy_rating")) checkin.energy_rating = body["energy_rating"];
+                if (body.contains("recovery_rating")) checkin.recovery_rating = body["recovery_rating"];
+                if (body.contains("sleep_quality_rating")) checkin.sleep_quality_rating = body["sleep_quality_rating"];
+                if (body.contains("average_weight_lbs")) checkin.average_weight_lbs = body["average_weight_lbs"];
+                if (body.contains("weight_change_lbs")) checkin.weight_change_lbs = body["weight_change_lbs"];
+                checkin.total_workouts_completed = body.value("total_workouts_completed", 0);
+                checkin.total_sets_completed = body.value("total_sets_completed", 0);
+                if (body.contains("notes")) checkin.notes = body["notes"];
+
+                std::string id = program_service.submit_checkin(checkin);
+
+                res.code = 201;
+                res.write(json({
+                    {"id", id},
+                    {"message", "Check-in submitted successfully"}
+                }).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
             }
         });
 
