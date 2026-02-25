@@ -2,6 +2,7 @@
 #include "../include/config.hpp"
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
+#include "../include/nutrition_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -177,6 +178,510 @@ int main() {
                     {"error", {
                         {"code", e.what()},
                         {"message", "Login failed"}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // ── Nutrition Log CRUD ────────────────────────────────────────
+
+        // POST /api/nutrition/log - Log a food entry
+        CROW_ROUTE(app, "/api/nutrition/log").methods("POST"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::LogFoodRequest log_req;
+                log_req.food_name = body.at("food_name").get<std::string>();
+                log_req.calories = body.at("calories").get<double>();
+                log_req.protein_g = body.at("protein_g").get<double>();
+                log_req.carbs_g = body.at("carbs_g").get<double>();
+                log_req.fat_g = body.at("fat_g").get<double>();
+                log_req.serving_size = body.at("serving_size").get<double>();
+                log_req.serving_unit = body.value("serving_unit", "g");
+                log_req.quantity = body.value("quantity", 1.0);
+
+                if (body.contains("meal_type") && !body["meal_type"].is_null()) {
+                    log_req.meal_type = body["meal_type"].get<std::string>();
+                }
+                if (body.contains("logged_at") && !body["logged_at"].is_null()) {
+                    log_req.logged_at = body["logged_at"].get<std::string>();
+                }
+                if (body.contains("brand") && !body["brand"].is_null()) {
+                    log_req.brand = body["brand"].get<std::string>();
+                }
+                if (body.contains("fiber_g") && !body["fiber_g"].is_null()) {
+                    log_req.fiber_g = body["fiber_g"].get<double>();
+                }
+                if (body.contains("sugar_g") && !body["sugar_g"].is_null()) {
+                    log_req.sugar_g = body["sugar_g"].get<double>();
+                }
+                if (body.contains("sodium_mg") && !body["sodium_mg"].is_null()) {
+                    log_req.sodium_mg = body["sodium_mg"].get<double>();
+                }
+                if (body.contains("is_custom")) {
+                    log_req.is_custom = body["is_custom"].get<bool>();
+                }
+                if (body.contains("source") && !body["source"].is_null()) {
+                    log_req.source = body["source"].get<std::string>();
+                }
+
+                auto entry = forge::NutritionService::log_food(ctx.user_id, log_req);
+
+                auto response = crow::response(201, json({
+                    {"entry", entry.to_json()}
+                }).dump());
+                response.add_header("Content-Type", "application/json");
+                return response;
+
+            } catch (const std::invalid_argument& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Failed to log food entry"}
+                    }}
+                }).dump());
+            } catch (const json::exception& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", "INVALID_REQUEST"},
+                        {"message", std::string("Invalid request body: ") + e.what()}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/nutrition/log?date=YYYY-MM-DD - Get entries for a date
+        CROW_ROUTE(app, "/api/nutrition/log").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                std::string date = req.url_params.get("date") ? req.url_params.get("date") : "";
+                if (date.empty()) {
+                    return crow::response(400, json({
+                        {"error", {
+                            {"code", "MISSING_DATE"},
+                            {"message", "date query parameter is required (YYYY-MM-DD)"}
+                        }}
+                    }).dump());
+                }
+
+                auto logs = forge::NutritionService::get_logs_for_date(ctx.user_id, date);
+
+                json entries = json::array();
+                for (const auto& log : logs) {
+                    entries.push_back(log.to_json());
+                }
+
+                auto response = crow::response(200, json({
+                    {"entries", entries},
+                    {"count", static_cast<int>(logs.size())}
+                }).dump());
+                response.add_header("Content-Type", "application/json");
+                return response;
+
+            } catch (const std::invalid_argument& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Failed to retrieve nutrition log"}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // PUT /api/nutrition/log/<string> - Update an entry
+        CROW_ROUTE(app, "/api/nutrition/log/<string>").methods("PUT"_method)
+        ([&app](const crow::request& req, const std::string& log_id) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::UpdateFoodRequest update_req;
+
+                if (body.contains("food_name") && !body["food_name"].is_null()) {
+                    update_req.food_name = body["food_name"].get<std::string>();
+                }
+                if (body.contains("calories") && !body["calories"].is_null()) {
+                    update_req.calories = body["calories"].get<double>();
+                }
+                if (body.contains("protein_g") && !body["protein_g"].is_null()) {
+                    update_req.protein_g = body["protein_g"].get<double>();
+                }
+                if (body.contains("carbs_g") && !body["carbs_g"].is_null()) {
+                    update_req.carbs_g = body["carbs_g"].get<double>();
+                }
+                if (body.contains("fat_g") && !body["fat_g"].is_null()) {
+                    update_req.fat_g = body["fat_g"].get<double>();
+                }
+                if (body.contains("serving_size") && !body["serving_size"].is_null()) {
+                    update_req.serving_size = body["serving_size"].get<double>();
+                }
+                if (body.contains("serving_unit") && !body["serving_unit"].is_null()) {
+                    update_req.serving_unit = body["serving_unit"].get<std::string>();
+                }
+                if (body.contains("quantity") && !body["quantity"].is_null()) {
+                    update_req.quantity = body["quantity"].get<double>();
+                }
+                if (body.contains("meal_type") && !body["meal_type"].is_null()) {
+                    update_req.meal_type = body["meal_type"].get<std::string>();
+                }
+                if (body.contains("logged_at") && !body["logged_at"].is_null()) {
+                    update_req.logged_at = body["logged_at"].get<std::string>();
+                }
+                if (body.contains("brand") && !body["brand"].is_null()) {
+                    update_req.brand = body["brand"].get<std::string>();
+                }
+                if (body.contains("fiber_g") && !body["fiber_g"].is_null()) {
+                    update_req.fiber_g = body["fiber_g"].get<double>();
+                }
+                if (body.contains("sugar_g") && !body["sugar_g"].is_null()) {
+                    update_req.sugar_g = body["sugar_g"].get<double>();
+                }
+                if (body.contains("sodium_mg") && !body["sodium_mg"].is_null()) {
+                    update_req.sodium_mg = body["sodium_mg"].get<double>();
+                }
+
+                auto entry = forge::NutritionService::update_log(ctx.user_id, log_id, update_req);
+
+                auto response = crow::response(200, json({
+                    {"entry", entry.to_json()}
+                }).dump());
+                response.add_header("Content-Type", "application/json");
+                return response;
+
+            } catch (const std::invalid_argument& e) {
+                std::string code = e.what();
+                int status = (code == "LOG_NOT_FOUND") ? 404 : 400;
+                return crow::response(status, json({
+                    {"error", {
+                        {"code", code},
+                        {"message", "Failed to update nutrition log entry"}
+                    }}
+                }).dump());
+            } catch (const json::exception& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", "INVALID_REQUEST"},
+                        {"message", std::string("Invalid request body: ") + e.what()}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // DELETE /api/nutrition/log/<string> - Delete an entry (soft delete)
+        CROW_ROUTE(app, "/api/nutrition/log/<string>").methods("DELETE"_method)
+        ([&app](const crow::request& req, const std::string& log_id) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                forge::NutritionService::delete_log(ctx.user_id, log_id);
+
+                return crow::response(200, json({
+                    {"message", "Entry deleted successfully"}
+                }).dump());
+
+            } catch (const std::invalid_argument& e) {
+                std::string code = e.what();
+                int status = (code == "LOG_NOT_FOUND") ? 404 : 400;
+                return crow::response(status, json({
+                    {"error", {
+                        {"code", code},
+                        {"message", "Failed to delete nutrition log entry"}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // ── Daily Summary ───────────────────────────────────────────
+
+        // GET /api/nutrition/summary?date=YYYY-MM-DD - Daily totals
+        CROW_ROUTE(app, "/api/nutrition/summary").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                std::string date = req.url_params.get("date") ? req.url_params.get("date") : "";
+                if (date.empty()) {
+                    return crow::response(400, json({
+                        {"error", {
+                            {"code", "MISSING_DATE"},
+                            {"message", "date query parameter is required (YYYY-MM-DD)"}
+                        }}
+                    }).dump());
+                }
+
+                auto summary = forge::NutritionService::get_daily_summary(ctx.user_id, date);
+
+                return crow::response(200, json({
+                    {"summary", summary.to_json()}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/nutrition/summary/range?start=YYYY-MM-DD&end=YYYY-MM-DD
+        CROW_ROUTE(app, "/api/nutrition/summary/range").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                std::string start_date = req.url_params.get("start") ? req.url_params.get("start") : "";
+                std::string end_date = req.url_params.get("end") ? req.url_params.get("end") : "";
+
+                if (start_date.empty() || end_date.empty()) {
+                    return crow::response(400, json({
+                        {"error", {
+                            {"code", "MISSING_DATE_RANGE"},
+                            {"message", "start and end query parameters are required (YYYY-MM-DD)"}
+                        }}
+                    }).dump());
+                }
+
+                auto summaries = forge::NutritionService::get_summary_range(ctx.user_id, start_date, end_date);
+
+                json days = json::array();
+                for (const auto& s : summaries) {
+                    days.push_back(s.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"summaries", days},
+                    {"count", static_cast<int>(summaries.size())}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // ── Custom Foods ────────────────────────────────────────────
+
+        // POST /api/nutrition/foods - Create custom food
+        CROW_ROUTE(app, "/api/nutrition/foods").methods("POST"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::CreateCustomFoodRequest food_req;
+                food_req.name = body.at("name").get<std::string>();
+                food_req.serving_size = body.at("serving_size").get<double>();
+                food_req.serving_unit = body.value("serving_unit", "g");
+                food_req.calories = body.at("calories").get<double>();
+                food_req.protein_g = body.at("protein_g").get<double>();
+                food_req.carbs_g = body.at("carbs_g").get<double>();
+                food_req.fat_g = body.at("fat_g").get<double>();
+
+                if (body.contains("brand") && !body["brand"].is_null()) {
+                    food_req.brand = body["brand"].get<std::string>();
+                }
+                if (body.contains("fiber_g") && !body["fiber_g"].is_null()) {
+                    food_req.fiber_g = body["fiber_g"].get<double>();
+                }
+                if (body.contains("sugar_g") && !body["sugar_g"].is_null()) {
+                    food_req.sugar_g = body["sugar_g"].get<double>();
+                }
+                if (body.contains("sodium_mg") && !body["sodium_mg"].is_null()) {
+                    food_req.sodium_mg = body["sodium_mg"].get<double>();
+                }
+
+                auto food = forge::NutritionService::create_custom_food(ctx.user_id, food_req);
+
+                return crow::response(201, json({
+                    {"food", food.to_json()}
+                }).dump());
+
+            } catch (const std::invalid_argument& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Failed to create custom food"}
+                    }}
+                }).dump());
+            } catch (const json::exception& e) {
+                return crow::response(400, json({
+                    {"error", {
+                        {"code", "INVALID_REQUEST"},
+                        {"message", std::string("Invalid request body: ") + e.what()}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // GET /api/nutrition/foods - List user's custom foods
+        CROW_ROUTE(app, "/api/nutrition/foods").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                auto foods = forge::NutritionService::get_custom_foods(ctx.user_id);
+
+                json food_list = json::array();
+                for (const auto& f : foods) {
+                    food_list.push_back(f.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"foods", food_list},
+                    {"count", static_cast<int>(foods.size())}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // DELETE /api/nutrition/foods/<string> - Delete custom food
+        CROW_ROUTE(app, "/api/nutrition/foods/<string>").methods("DELETE"_method)
+        ([&app](const crow::request& req, const std::string& food_id) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                forge::NutritionService::delete_custom_food(ctx.user_id, food_id);
+
+                return crow::response(200, json({
+                    {"message", "Custom food deleted successfully"}
+                }).dump());
+
+            } catch (const std::invalid_argument& e) {
+                std::string code = e.what();
+                int status = (code == "FOOD_NOT_FOUND") ? 404 : 400;
+                return crow::response(status, json({
+                    {"error", {
+                        {"code", code},
+                        {"message", "Failed to delete custom food"}
+                    }}
+                }).dump());
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // ── Recent / Frequent Foods ─────────────────────────────────
+
+        // GET /api/nutrition/recent - Get user's most frequently logged foods
+        CROW_ROUTE(app, "/api/nutrition/recent").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                auto foods = forge::NutritionService::get_recent_foods(ctx.user_id);
+
+                json food_list = json::array();
+                for (const auto& f : foods) {
+                    food_list.push_back(f.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"foods", food_list},
+                    {"count", static_cast<int>(foods.size())}
+                }).dump());
+
+            } catch (const std::exception& e) {
+                return crow::response(500, json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+            }
+        });
+
+        // ── USDA Food Search ────────────────────────────────────────
+
+        // GET /api/nutrition/search?q=chicken+breast - Search USDA database
+        CROW_ROUTE(app, "/api/nutrition/search").methods("GET"_method)
+        ([&app](const crow::request& req) {
+            auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+            try {
+                std::string query = req.url_params.get("q") ? req.url_params.get("q") : "";
+                if (query.empty()) {
+                    return crow::response(400, json({
+                        {"error", {
+                            {"code", "MISSING_QUERY"},
+                            {"message", "q query parameter is required"}
+                        }}
+                    }).dump());
+                }
+
+                auto foods = forge::NutritionService::search_usda(query);
+
+                json food_list = json::array();
+                for (const auto& f : foods) {
+                    food_list.push_back(f.to_json());
+                }
+
+                return crow::response(200, json({
+                    {"foods", food_list},
+                    {"count", static_cast<int>(foods.size())},
+                    {"query", query}
+                }).dump());
+
+            } catch (const std::runtime_error& e) {
+                return crow::response(503, json({
+                    {"error", {
+                        {"code", "SEARCH_UNAVAILABLE"},
+                        {"message", e.what()}
                     }}
                 }).dump());
             } catch (const std::exception& e) {

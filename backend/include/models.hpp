@@ -3,6 +3,7 @@
 #include <string>
 #include <optional>
 #include <chrono>
+#include <ctime>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -162,7 +163,37 @@ struct NutritionLog {
     bool is_custom;
     std::string source;
 
-    json to_json() const;
+    json to_json() const {
+        // Format logged_at as ISO 8601 string
+        auto time_t_val = std::chrono::system_clock::to_time_t(logged_at);
+        std::tm tm = *std::gmtime(&time_t_val);
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+
+        json j = {
+            {"id", id},
+            {"user_id", user_id},
+            {"logged_at", std::string(buf)},
+            {"food_name", food_name},
+            {"serving_size", serving_size},
+            {"serving_unit", serving_unit},
+            {"quantity", quantity},
+            {"calories", calories},
+            {"protein_g", protein_g},
+            {"carbs_g", carbs_g},
+            {"fat_g", fat_g},
+            {"is_custom", is_custom},
+            {"source", source}
+        };
+
+        if (meal_type) j["meal_type"] = *meal_type;
+        if (brand) j["brand"] = *brand;
+        if (fiber_g) j["fiber_g"] = *fiber_g;
+        if (sugar_g) j["sugar_g"] = *sugar_g;
+        if (sodium_mg) j["sodium_mg"] = *sodium_mg;
+
+        return j;
+    }
 };
 
 } // namespace forge
