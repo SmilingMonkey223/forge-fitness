@@ -1,4 +1,4 @@
-import type { AuthResponse, User, UserProfile, DashboardData, ApiError } from '@/types'
+import type { AuthResponse, UserProfile, DashboardData, ApiError } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
@@ -25,14 +25,17 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
     }
 
     const token = this.getAccessToken()
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
+    }
+
+    if (options.headers) {
+      Object.assign(headers, options.headers)
     }
 
     const response = await fetch(`${API_BASE}${endpoint}`, {

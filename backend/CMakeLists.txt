@@ -54,13 +54,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-# Source files
-file(GLOB_RECURSE SOURCES
-    src/*.cpp
+# Source files - explicitly list service sources for reliable builds
+file(GLOB SOURCES
+    src/services/*.cpp
 )
-
-# Remove main.cpp from sources for library
-list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+# Include additional source directories as they become available
+# file(GLOB_RECURSE AI_SOURCES src/ai/*.cpp)
+# file(GLOB_RECURSE COACHING_SOURCES src/coaching/*.cpp)
+# list(APPEND SOURCES ${AI_SOURCES} ${COACHING_SOURCES})
 
 # Create library for testability
 add_library(forge_lib STATIC ${SOURCES})
@@ -77,6 +78,7 @@ target_link_libraries(forge_lib PUBLIC
     Threads::Threads
     pq
     pqxx
+    curl
 )
 
 # Main executable
@@ -87,15 +89,17 @@ target_link_libraries(forge PRIVATE forge_lib)
 enable_testing()
 
 file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
-add_executable(forge_tests ${TEST_SOURCES})
-target_link_libraries(forge_tests PRIVATE
-    forge_lib
-    GTest::gtest_main
-    GTest::gmock
-)
+if(TEST_SOURCES)
+    add_executable(forge_tests ${TEST_SOURCES})
+    target_link_libraries(forge_tests PRIVATE
+        forge_lib
+        GTest::gtest_main
+        GTest::gmock
+    )
 
-include(GoogleTest)
-gtest_discover_tests(forge_tests)
+    include(GoogleTest)
+    gtest_discover_tests(forge_tests)
+endif()
 
 # Custom targets
 add_custom_target(lint
