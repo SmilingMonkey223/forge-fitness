@@ -115,9 +115,217 @@ export interface AuthResponse {
   refresh_token: string
 }
 
+export interface AddSetRequest {
+  exercise_id: string
+  weight_kg?: number
+  reps?: number
+  rpe?: number
+  set_type: ExerciseSet['set_type']
+}
+
+export interface AddSetResponse {
+  set: ExerciseSet
+  is_pr: boolean
+  estimated_1rm?: number
+  previous_1rm?: number
+}
+
+export interface ExerciseHistoryEntry {
+  workout_id: string
+  workout_date: string
+  sets: {
+    weight_kg: number
+    reps: number
+    rpe?: number
+    set_type: ExerciseSet['set_type']
+    is_pr: boolean
+  }[]
+}
+
 export interface ApiError {
   error: {
     code: string
     message: string
   }
 }
+
+export interface MuscleGroupVolume {
+  muscle_group: string
+  total_sets: number
+  percentage: number
+}
+
+export interface PersonalRecord {
+  id: string
+  exercise_name: string
+  weight_kg: number
+  reps: number
+  pr_type: string
+  value: number
+  date: string
+}
+
+export interface ConsistencyPoint {
+  date: string
+  workout_completed: boolean
+  volume_kg: number
+}
+
+export interface Streaks {
+  workout: { current: number; best: number }
+  logging: { current: number; best: number }
+  weight: { current: number; best: number }
+}
+
+export interface CheckInRecommendation {
+  summary: string
+  adaptive_tdee_kcal: number
+  formula_tdee_kcal: number
+  recommended_calorie_target: number
+  protein_target_g: number
+  carbs_target_g: number
+  fat_target_g: number
+  calorie_adjustment: number
+}
+
+export interface FoodItem {
+  name: string
+  portion_grams: number
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+}
+
+export interface FoodRecognitionResult {
+  task_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  confidence?: number
+  tier?: number
+  items?: FoodItem[]
+  error?: string
+}
+
+export interface WeightData {
+  date: string
+  scale_weight_kg: number
+  trend_weight_kg?: number
+}
+
+export interface WeightTrend {
+  current_trend_weight_kg: number
+  weekly_rate_kg: number
+  goal_weight_kg: number
+  progress_percent: number
+  estimated_days_to_goal?: number
+  is_reliable: boolean
+}
+
+export interface WorkoutSummary {
+  id: string
+  name?: string
+  started_at: string
+  completed_at?: string
+  duration_seconds?: number
+  status: 'in_progress' | 'completed' | 'cancelled'
+  exercises_count: number
+  sets_count: number
+  total_volume_kg: number
+}
+
+export interface NutritionSummary {
+  date: string
+  total_calories: number
+  total_protein_g: number
+  total_carbs_g: number
+  total_fat_g: number
+  meal_count: number
+}
+
+export interface CustomFood {
+  id: string
+  name: string
+  brand?: string
+  serving_size: number
+  serving_unit: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+}
+
+export interface RecentFood {
+  food_name: string
+  brand?: string
+  serving_size: number
+  serving_unit: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  last_logged: string
+}
+
+export interface USDAFood {
+  fdc_id: number
+  description: string
+  brand_owner?: string
+  serving_size?: number
+  serving_unit?: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+}
+
+export interface RoutineSetTemplate {
+  id: string
+  set_order: number
+  set_type: string
+  target_reps?: number
+  target_weight_kg?: number
+  target_rpe?: number
+  rest_seconds?: number
+}
+
+export interface RoutineExercise {
+  id: string
+  exercise_id: string
+  exercise_name: string
+  order_index: number
+  notes?: string
+  sets: RoutineSetTemplate[]
+}
+
+export interface Routine {
+  id: string
+  user_id: string
+  name: string
+  description?: string
+  exercises: RoutineExercise[]
+}
+
+export interface RoutineSummary {
+  id: string
+  name: string
+  description?: string
+  exercise_count: number
+}
+
+export interface CreateRoutineRequest {
+  name: string
+  description?: string
+  exercises: {
+    exercise_id: string
+    notes?: string
+    sets: {
+      set_type?: string
+      target_reps?: number
+      target_weight_kg?: number
+      target_rpe?: number
+      rest_seconds?: number
+    }[]
+  }[]
+}
+
+export type UpdateRoutineRequest = CreateRoutineRequest
