@@ -2,6 +2,7 @@
 #include "../include/config.hpp"
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
+#include "../include/profile_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -207,6 +208,137 @@ int main() {
                 }}
             }).dump());
             res.end();
+        });
+
+        // Profile endpoints
+        CROW_ROUTE(app, "/api/profile")
+        ([](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto profile = forge::ProfileService::get_profile(ctx.user_id);
+
+                if (!profile.has_value()) {
+                    res.code = 404;
+                    res.write(json({
+                        {"error", {
+                            {"code", "PROFILE_NOT_FOUND"},
+                            {"message", "No profile found. Please complete onboarding."}
+                        }}
+                    }).dump());
+                    res.end();
+                    return;
+                }
+
+                res.code = 200;
+                res.add_header("Content-Type", "application/json");
+                res.write(json({{"profile", profile->to_json()}}).dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        CROW_ROUTE(app, "/api/profile").methods("PUT"_method)
+        ([](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto body = json::parse(req.body);
+
+                forge::ProfileService::UpdateProfileRequest update_req;
+                update_req.user_id = ctx.user_id;
+
+                if (body.contains("date_of_birth"))
+                    update_req.date_of_birth = body["date_of_birth"].get<std::string>();
+                if (body.contains("sex"))
+                    update_req.sex = body["sex"].get<std::string>();
+                if (body.contains("height_cm"))
+                    update_req.height_cm = body["height_cm"].get<double>();
+                if (body.contains("weight_kg"))
+                    update_req.weight_kg = body["weight_kg"].get<double>();
+                if (body.contains("activity_level"))
+                    update_req.activity_level = body["activity_level"].get<std::string>();
+                if (body.contains("fitness_goal"))
+                    update_req.fitness_goal = body["fitness_goal"].get<std::string>();
+                if (body.contains("unit_preference"))
+                    update_req.unit_preference = body["unit_preference"].get<std::string>();
+
+                auto profile = forge::ProfileService::update_profile(update_req);
+
+                res.code = 200;
+                res.add_header("Content-Type", "application/json");
+                res.write(json({{"profile", profile.to_json()}}).dump());
+                res.end();
+
+            } catch (const std::invalid_argument& e) {
+                res.code = 400;
+                res.write(json({
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Profile update failed"}
+                    }}
+                }).dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        CROW_ROUTE(app, "/api/profile/onboarding").methods("POST"_method)
+        ([](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+            try {
+                auto body = json::parse(req.body);
+
+                forge::ProfileService::OnboardingRequest onboarding_req;
+                onboarding_req.user_id = ctx.user_id;
+                onboarding_req.date_of_birth = body["date_of_birth"].get<std::string>();
+                onboarding_req.sex = body["sex"].get<std::string>();
+                onboarding_req.height_cm = body["height_cm"].get<double>();
+                onboarding_req.weight_kg = body["weight_kg"].get<double>();
+                onboarding_req.activity_level = body["activity_level"].get<std::string>();
+                onboarding_req.fitness_goal = body["fitness_goal"].get<std::string>();
+
+                if (body.contains("unit_preference"))
+                    onboarding_req.unit_preference = body["unit_preference"].get<std::string>();
+
+                auto profile = forge::ProfileService::complete_onboarding(onboarding_req);
+
+                res.code = 201;
+                res.add_header("Content-Type", "application/json");
+                res.write(json({{"profile", profile.to_json()}}).dump());
+                res.end();
+
+            } catch (const std::invalid_argument& e) {
+                res.code = 400;
+                res.write(json({
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Onboarding failed"}
+                    }}
+                }).dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
         });
 
         // Start server
