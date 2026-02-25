@@ -30,13 +30,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(crow)
 
-# nlohmann/json
+# nlohmann/json (name must match what jwt-cpp looks for to avoid duplicate targets)
 FetchContent_Declare(
-    json
+    nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.3
 )
-FetchContent_MakeAvailable(json)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # jwt-cpp
 FetchContent_Declare(
