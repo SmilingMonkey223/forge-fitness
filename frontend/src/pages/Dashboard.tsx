@@ -7,9 +7,11 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onLogout }: DashboardProps) {
-  const { data, isLoading, error } = useQuery<DashboardData>({
+  const { data, isLoading, error, isRefetching } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: () => api.getDashboard(),
+    staleTime: 30_000,        // Data considered fresh for 30 seconds
+    refetchInterval: 60_000,  // Auto-refresh every 60 seconds
   })
 
   const handleLogout = () => {
@@ -19,8 +21,50 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-text-secondary">Loading dashboard...</div>
+      <div className="min-h-screen pb-12">
+        {/* Header */}
+        <div className="bg-surface border-b border-text-muted">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold">FORGE</h1>
+            <button onClick={handleLogout} className="text-text-secondary hover:text-primary">
+              Log Out
+            </button>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+          {/* Skeleton for nutrition */}
+          <section>
+            <div className="h-6 w-40 bg-surface-elevated rounded animate-pulse mb-6" />
+            <div className="card">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex flex-col items-center">
+                    <div className="w-28 h-28 rounded-full bg-surface-elevated animate-pulse" />
+                    <div className="h-4 w-16 bg-surface-elevated rounded animate-pulse mt-2" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+          {/* Skeleton for workout */}
+          <section>
+            <div className="h-6 w-24 bg-surface-elevated rounded animate-pulse mb-6" />
+            <div className="card">
+              <div className="h-32 bg-surface-elevated rounded animate-pulse" />
+            </div>
+          </section>
+          {/* Skeleton for week */}
+          <section>
+            <div className="h-6 w-28 bg-surface-elevated rounded animate-pulse mb-6" />
+            <div className="card">
+              <div className="flex justify-center gap-2 mb-6">
+                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <div key={i} className="w-10 h-10 rounded-full bg-surface-elevated animate-pulse" />
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     )
   }
@@ -41,6 +85,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     )
   }
 
+  const formatVolume = (kg: number): string => {
+    if (kg >= 1000) {
+      return `${(kg / 1000).toFixed(1)} tons`
+    }
+    return `${Math.round(kg)} kg`
+  }
+
   const MacroRing = ({
     label,
     consumed,
@@ -52,7 +103,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     target: number
     color: string
   }) => {
-    const percentage = Math.min((consumed / target) * 100, 100)
+    const percentage = target > 0 ? Math.min((consumed / target) * 100, 100) : 0
     const circumference = 2 * Math.PI * 45
     const strokeDashoffset = circumference - (percentage / 100) * circumference
 
@@ -84,7 +135,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <div className="text-xl font-bold font-mono">{Math.round(consumed)}</div>
-            <div className="text-xs text-text-muted">/ {target}</div>
+            <div className="text-xs text-text-muted">/ {Math.round(target)}</div>
           </div>
         </div>
         <div className="text-sm text-text-secondary mt-2">{label}</div>
@@ -97,7 +148,12 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       {/* Header */}
       <div className="bg-surface border-b border-text-muted">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">FORGE</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">FORGE</h1>
+            {isRefetching && (
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            )}
+          </div>
           <button onClick={handleLogout} className="text-text-secondary hover:text-primary">
             Log Out
           </button>
@@ -105,6 +161,26 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+        {/* Onboarding prompt if no profile */}
+        {data && !data.has_profile && (
+          <section>
+            <div className="card border border-primary/30 bg-primary/5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1">
+                  <h3 className="text-primary font-semibold mb-1">Complete your profile</h3>
+                  <p className="text-text-secondary text-sm">
+                    Set up your profile to get personalized calorie and macro targets
+                    based on your body stats and fitness goals.
+                  </p>
+                </div>
+                <button className="btn-primary whitespace-nowrap">
+                  Set Up Profile
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Today's Summary */}
         <section>
           <h2 className="mb-6">Today's Progress</h2>
@@ -114,26 +190,26 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
               <MacroRing
                 label="Calories"
-                consumed={data?.today.nutrition.calories.consumed || 0}
-                target={data?.today.nutrition.calories.target || 2400}
+                consumed={data?.today.nutrition.calories.consumed ?? 0}
+                target={data?.today.nutrition.calories.target ?? 2400}
                 color="#6C5CE7"
               />
               <MacroRing
                 label="Protein"
-                consumed={data?.today.nutrition.protein_g.consumed || 0}
-                target={data?.today.nutrition.protein_g.target || 176}
+                consumed={data?.today.nutrition.protein_g.consumed ?? 0}
+                target={data?.today.nutrition.protein_g.target ?? 176}
                 color="#00D68F"
               />
               <MacroRing
                 label="Carbs"
-                consumed={data?.today.nutrition.carbs_g.consumed || 0}
-                target={data?.today.nutrition.carbs_g.target || 280}
+                consumed={data?.today.nutrition.carbs_g.consumed ?? 0}
+                target={data?.today.nutrition.carbs_g.target ?? 280}
                 color="#FFB800"
               />
               <MacroRing
                 label="Fat"
-                consumed={data?.today.nutrition.fat_g.consumed || 0}
-                target={data?.today.nutrition.fat_g.target || 80}
+                consumed={data?.today.nutrition.fat_g.consumed ?? 0}
+                target={data?.today.nutrition.fat_g.target ?? 80}
                 color="#FF5252"
               />
             </div>
@@ -161,7 +237,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   <div>
                     <div className="text-text-muted">Total Volume</div>
                     <div className="text-xl font-mono">
-                      {(data.today.workout.total_volume_kg / 1000).toFixed(1)} tons
+                      {formatVolume(data.today.workout.total_volume_kg)}
                     </div>
                   </div>
                   <div>
@@ -198,22 +274,24 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center ${
                       data?.week.workout_days[i]
-                        ? 'bg-primary'
+                        ? 'bg-primary text-white'
                         : 'bg-surface-elevated'
                     }`}
                   >
-                    {data?.week.workout_days[i] && '✓'}
+                    {data?.week.workout_days[i] && (
+                      <span className="text-sm font-bold">&#10003;</span>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
-            {data?.week.current_streak ? (
+            {(data?.week.current_streak ?? 0) > 0 && (
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary">
-                  {data.week.current_streak} day streak
+                  {data!.week.current_streak} day streak
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </section>
       </div>

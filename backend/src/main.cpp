@@ -1,6 +1,7 @@
 #include <crow.h>
 #include "../include/config.hpp"
 #include "../include/database.hpp"
+#include "../include/dashboard_service.hpp"
 #include "../include/jwt.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -189,24 +190,32 @@ int main() {
             }
         });
 
-        // Placeholder for other endpoints
+        // Dashboard endpoint - aggregated data for the current user
         CROW_ROUTE(app, "/api/dashboard")
         ([](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
-            // TODO: Implement dashboard logic
-            res.write(json({
-                {"today", {
-                    {"nutrition", {
-                        {"calories", {{"consumed", 0}, {"target", 2400}}},
-                        {"protein_g", {{"consumed", 0}, {"target", 176}}}
-                    }},
-                    {"workout", nullptr}
-                }},
-                {"week", {
-                    {"workout_days", json::array()},
-                    {"daily_calories", json::array()}
-                }}
-            }).dump());
-            res.end();
+            try {
+                auto start = std::chrono::steady_clock::now();
+
+                auto dashboard = forge::DashboardService::get_dashboard(ctx.user_id);
+
+                auto end = std::chrono::steady_clock::now();
+                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+                std::cout << "[dashboard] user=" << ctx.user_id
+                          << " latency=" << ms << "ms" << std::endl;
+
+                res.add_header("Content-Type", "application/json");
+                res.write(dashboard.to_json().dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }).dump());
+                res.end();
+            }
         });
 
         // Start server

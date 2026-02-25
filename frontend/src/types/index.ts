@@ -107,6 +107,7 @@ export interface DashboardData {
     protein_target: number
     current_streak: number
   }
+  has_profile: boolean
 }
 
 export interface AuthResponse {
