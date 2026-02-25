@@ -92,21 +92,13 @@ export default function WeightTracker() {
     // Trend line
     const trendPoints = weightHistory
       .filter(d => d.trend_weight_kg)
-      .map((d, i) => `${scaleX(weightHistory.indexOf(d))},${scaleY(d.trend_weight_kg!)}`)
+      .map((d) => `${scaleX(weightHistory.indexOf(d))},${scaleY(d.trend_weight_kg!)}`)
       .join(' ')
 
     return { scaleDots, trendPoints, minWeight, maxWeight }
   }
 
   const chartData = getChartPath()
-
-  const getRateColor = (rate: number) => {
-    if (!trend) return 'text-gray-600'
-    // Assume goal is to lose weight if trend is down
-    const isTowardsGoal = (trend.current_trend_weight_kg > trend.goal_weight_kg && rate < 0) ||
-                          (trend.current_trend_weight_kg < trend.goal_weight_kg && rate > 0)
-    return isTowardsGoal ? 'text-green-600' : 'text-red-600'
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
