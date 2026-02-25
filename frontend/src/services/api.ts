@@ -1,4 +1,4 @@
-import type { AuthResponse, User, DashboardData, ApiError } from '@/types'
+import type { AuthResponse, User, UserProfile, DashboardData, ApiError } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
@@ -79,6 +79,33 @@ class ApiClient {
 
   async logout() {
     this.setAccessToken(null)
+  }
+
+  // Profile endpoints
+  async getProfile(): Promise<{ profile: UserProfile }> {
+    return this.request<{ profile: UserProfile }>('/api/profile')
+  }
+
+  async updateProfile(data: Partial<Omit<UserProfile, 'id' | 'user_id' | 'tdee_calories' | 'target_calories' | 'target_protein_g' | 'target_carbs_g' | 'target_fat_g'>>): Promise<{ profile: UserProfile }> {
+    return this.request<{ profile: UserProfile }>('/api/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async completeOnboarding(data: {
+    date_of_birth: string
+    sex: string
+    height_cm: number
+    weight_kg: number
+    activity_level: string
+    fitness_goal: string
+    unit_preference?: string
+  }): Promise<{ profile: UserProfile }> {
+    return this.request<{ profile: UserProfile }>('/api/profile/onboarding', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
   }
 
   // Dashboard endpoint
