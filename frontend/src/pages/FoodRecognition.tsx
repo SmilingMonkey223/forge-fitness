@@ -294,7 +294,7 @@ export default function FoodRecognition() {
         )}
 
         {/* Review Results */}
-        {status === 'reviewing' && result && (
+        {(status === 'reviewing' || status === 'logging') && result && (
           <div className="space-y-4">
             {/* Preview Image */}
             {previewUrl && (

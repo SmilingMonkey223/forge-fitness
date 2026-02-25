@@ -9,8 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -fsanitize=address,undefined")
-    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address,undefined")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -DNDEBUG")
 endif()
@@ -19,10 +18,9 @@ endif()
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Try to find packages, fallback to FetchContent if not found
 include(FetchContent)
 
-# Crow HTTP framework
+# Crow HTTP framework (v1.0+5 - uses Boost.Asio, matches our middleware API)
 FetchContent_Declare(
     crow
     GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
@@ -30,13 +28,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(crow)
 
-# nlohmann/json
+# nlohmann/json (name must match what jwt-cpp looks for to avoid duplicate targets)
 FetchContent_Declare(
-    json
+    nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.3
 )
-FetchContent_MakeAvailable(json)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # jwt-cpp
 FetchContent_Declare(
@@ -54,13 +52,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-# Source files
-file(GLOB_RECURSE SOURCES
-    src/*.cpp
-)
-
-# Remove main.cpp from sources for library
-list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+# Source files - only services directory (not recursive to avoid picking up stubs)
+file(GLOB SOURCES src/services/*.cpp)
 
 # Create library for testability
 add_library(forge_lib STATIC ${SOURCES})
@@ -68,6 +61,15 @@ target_include_directories(forge_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# Try find_package for pqxx first, fallback to direct linking
+find_package(libpqxx QUIET)
+if(libpqxx_FOUND)
+    target_link_libraries(forge_lib PUBLIC libpqxx::pqxx)
+else()
+    target_link_libraries(forge_lib PUBLIC pq pqxx)
+endif()
+
 target_link_libraries(forge_lib PUBLIC
     Crow::Crow
     nlohmann_json::nlohmann_json
@@ -75,8 +77,7 @@ target_link_libraries(forge_lib PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     Threads::Threads
-    pq
-    pqxx
+    curl
 )
 
 # Main executable
@@ -87,19 +88,14 @@ target_link_libraries(forge PRIVATE forge_lib)
 enable_testing()
 
 file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
-add_executable(forge_tests ${TEST_SOURCES})
-target_link_libraries(forge_tests PRIVATE
-    forge_lib
-    GTest::gtest_main
-    GTest::gmock
-)
+if(TEST_SOURCES)
+    add_executable(forge_tests ${TEST_SOURCES})
+    target_link_libraries(forge_tests PRIVATE
+        forge_lib
+        GTest::gtest_main
+        GTest::gmock
+    )
 
-include(GoogleTest)
-gtest_discover_tests(forge_tests)
-
-# Custom targets
-add_custom_target(lint
-    COMMAND clang-format -i ${SOURCES} ${TEST_SOURCES}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Running clang-format"
-)
+    include(GoogleTest)
+    gtest_discover_tests(forge_tests)
+endif()

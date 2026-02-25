@@ -2,8 +2,14 @@
 #include "../include/config.hpp"
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
+#include "../include/auth_service.hpp"
 #include "../include/profile_service.hpp"
 #include "../include/workout_service.hpp"
+#include "../include/weight_service.hpp"
+#include "../include/analytics_service.hpp"
+#include "../include/nutrition_service.hpp"
+#include "../include/dashboard_service.hpp"
+#include "../include/routine_service.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
@@ -31,12 +37,12 @@ struct AuthMiddleware {
         std::string auth_header = req.get_header_value("Authorization");
         if (auth_header.empty() || auth_header.substr(0, 7) != "Bearer ") {
             res.code = 401;
-            res.write(json({
+            res.write(json{
                 {"error", {
                     {"code", "UNAUTHORIZED"},
                     {"message", "Missing or invalid authorization header"}
                 }}
-            }).dump());
+            }.dump());
             res.end();
             return;
         }
@@ -49,12 +55,12 @@ struct AuthMiddleware {
             ctx.username = JWT::get_username(decoded);
         } catch (const std::exception& e) {
             res.code = 401;
-            res.write(json({
+            res.write(json{
                 {"error", {
                     {"code", "UNAUTHORIZED"},
                     {"message", "Invalid or expired token"}
                 }}
-            }).dump());
+            }.dump());
             res.end();
         }
     }
@@ -97,11 +103,11 @@ int main() {
         // Health check endpoint
         CROW_ROUTE(app, "/health")
         ([]() {
-            return crow::response(200, json({
+            return crow::response(200, json{
                 {"status", "ok"},
                 {"timestamp", std::chrono::system_clock::to_time_t(
                     std::chrono::system_clock::now())}
-            }).dump());
+            }.dump());
         });
 
         // Auth endpoints
@@ -118,11 +124,11 @@ int main() {
 
                 auto [user, tokens] = forge::AuthService::register_user(register_req);
 
-                auto response = crow::response(201, json({
+                auto response = crow::response(201, json{
                     {"user", user.to_json()},
                     {"access_token", tokens.access_token},
                     {"refresh_token", tokens.refresh_token}
-                }).dump());
+                }.dump());
 
                 response.add_header("Content-Type", "application/json");
 
@@ -134,19 +140,19 @@ int main() {
                 return response;
 
             } catch (const std::invalid_argument& e) {
-                return crow::response(400, json({
+                return crow::response(400, json{
                     {"error", {
                         {"code", e.what()},
                         {"message", "Registration failed"}
                     }}
-                }).dump());
+                }.dump());
             } catch (const std::exception& e) {
-                return crow::response(500, json({
+                return crow::response(500, json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
             }
         });
 
@@ -161,11 +167,11 @@ int main() {
 
                 auto [user, tokens] = forge::AuthService::login(login_req);
 
-                auto response = crow::response(200, json({
+                auto response = crow::response(200, json{
                     {"user", user.to_json()},
                     {"access_token", tokens.access_token},
                     {"refresh_token", tokens.refresh_token}
-                }).dump());
+                }.dump());
 
                 response.add_header("Content-Type", "application/json");
                 response.add_header("Set-Cookie",
@@ -175,32 +181,37 @@ int main() {
                 return response;
 
             } catch (const std::invalid_argument& e) {
-                return crow::response(401, json({
+                return crow::response(401, json{
                     {"error", {
                         {"code", e.what()},
                         {"message", "Login failed"}
                     }}
-                }).dump());
+                }.dump());
             } catch (const std::exception& e) {
-                return crow::response(500, json({
+                return crow::response(500, json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
             }
         });
 
         // Initialize services
         forge::WorkoutService workout_service(forge::Database::instance());
+        forge::WeightService weight_service(forge::Database::instance());
+        forge::AnalyticsService analytics_service(forge::Database::instance());
+        forge::NutritionService nutrition_service(forge::Database::instance());
+        forge::DashboardService dashboard_service(forge::Database::instance());
+        forge::RoutineService routine_service(forge::Database::instance());
 
         // ── Workout Tracking Endpoints ──────────────────────────────
 
         // POST /api/workouts - Start a new workout
         CROW_ROUTE(app, "/api/workouts").methods("POST"_method)
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 std::optional<std::string> name;
                 std::optional<std::string> notes;
 
@@ -219,30 +230,30 @@ int main() {
                 );
 
                 res.code = 201;
-                res.write(json({
+                res.write(json{
                     {"id", workout_id},
                     {"status", "in_progress"},
                     {"message", "Workout started"}
-                }).dump());
+                }.dump());
                 res.end();
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // GET /api/workouts - List user's workouts (paginated)
         CROW_ROUTE(app, "/api/workouts")
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto limit_param = req.url_params.get("limit");
                 auto offset_param = req.url_params.get("offset");
                 int limit = limit_param ? std::stoi(limit_param) : 20;
@@ -255,40 +266,40 @@ int main() {
                     workouts_json.push_back(w.to_json());
                 }
 
-                res.write(json({
+                res.write(json{
                     {"workouts", workouts_json},
                     {"limit", limit},
                     {"offset", offset}
-                }).dump());
+                }.dump());
                 res.end();
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // GET /api/workouts/:id - Get workout detail with all sets
         CROW_ROUTE(app, "/api/workouts/<string>")
-        ([&workout_service](const crow::request&, crow::response& res,
-          forge::AuthMiddleware::context& ctx, const std::string& workout_id) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res, const std::string& workout_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto workout = workout_service.get_workout(workout_id, ctx.user_id);
 
                 if (!workout) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Workout not found"}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
@@ -298,21 +309,21 @@ int main() {
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // PUT /api/workouts/:id/complete - Complete workout
         CROW_ROUTE(app, "/api/workouts/<string>/complete").methods("PUT"_method)
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx, const std::string& workout_id) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res, const std::string& workout_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 std::optional<std::string> notes;
                 if (!req.body.empty()) {
                     auto body = json::parse(req.body);
@@ -327,12 +338,12 @@ int main() {
 
                 if (!workout) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Workout not found"}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
@@ -344,69 +355,69 @@ int main() {
                 std::string code = e.what();
                 int status = (code == "WORKOUT_NOT_IN_PROGRESS") ? 400 : 404;
                 res.code = status;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", code},
                         {"message", code == "WORKOUT_NOT_IN_PROGRESS"
                             ? "Workout is not in progress"
                             : "Workout not found"}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // DELETE /api/workouts/:id - Soft delete workout
         CROW_ROUTE(app, "/api/workouts/<string>").methods("DELETE"_method)
-        ([&workout_service](const crow::request&, crow::response& res,
-          forge::AuthMiddleware::context& ctx, const std::string& workout_id) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res, const std::string& workout_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 bool deleted = workout_service.delete_workout(workout_id, ctx.user_id);
 
                 if (!deleted) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Workout not found"}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
 
-                res.write(json({
+                res.write(json{
                     {"success", true},
                     {"message", "Workout deleted"}
-                }).dump());
+                }.dump());
                 res.end();
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // POST /api/workouts/:id/sets - Add a set to workout
         CROW_ROUTE(app, "/api/workouts/<string>/sets").methods("POST"_method)
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx, const std::string& workout_id) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res, const std::string& workout_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto body = json::parse(req.body);
 
                 std::string exercise_id = body["exercise_id"];
@@ -455,31 +466,31 @@ int main() {
                     status = 404;
                 }
                 res.code = status;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", code},
                         {"message", code}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // PUT /api/workouts/:id/sets/:set_id - Update a set
         CROW_ROUTE(app, "/api/workouts/<string>/sets/<string>").methods("PUT"_method)
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx,
+        ([&app, &workout_service](const crow::request& req, crow::response& res,
           const std::string& workout_id, const std::string& set_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto body = json::parse(req.body);
 
                 std::optional<double> weight_kg;
@@ -520,12 +531,12 @@ int main() {
 
                 if (!result) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Set or workout not found"}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
@@ -535,50 +546,50 @@ int main() {
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         // DELETE /api/workouts/:id/sets/:set_id - Delete a set
         CROW_ROUTE(app, "/api/workouts/<string>/sets/<string>").methods("DELETE"_method)
-        ([&workout_service](const crow::request&, crow::response& res,
-          forge::AuthMiddleware::context& ctx,
+        ([&app, &workout_service](const crow::request& req, crow::response& res,
           const std::string& workout_id, const std::string& set_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 bool deleted = workout_service.delete_set(workout_id, set_id, ctx.user_id);
 
                 if (!deleted) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Set or workout not found"}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
 
-                res.write(json({
+                res.write(json{
                     {"success", true},
                     {"message", "Set deleted"}
-                }).dump());
+                }.dump());
                 res.end();
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
@@ -613,20 +624,20 @@ int main() {
                     exercises_json.push_back(ex.to_json());
                 }
 
-                return crow::response(200, json({
+                return crow::response(200, json{
                     {"exercises", exercises_json},
                     {"count", static_cast<int>(exercises.size())},
                     {"limit", limit},
                     {"offset", offset}
-                }).dump());
+                }.dump());
 
             } catch (const std::exception& e) {
-                return crow::response(500, json({
+                return crow::response(500, json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
             }
         });
 
@@ -637,31 +648,31 @@ int main() {
                 auto exercise = workout_service.get_exercise(exercise_id);
 
                 if (!exercise) {
-                    return crow::response(404, json({
+                    return crow::response(404, json{
                         {"error", {
                             {"code", "NOT_FOUND"},
                             {"message", "Exercise not found"}
                         }}
-                    }).dump());
+                    }.dump());
                 }
 
                 return crow::response(200, exercise->to_json().dump());
 
             } catch (const std::exception& e) {
-                return crow::response(500, json({
+                return crow::response(500, json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
             }
         });
 
         // GET /api/exercises/:id/history - Get last 5 performances
         CROW_ROUTE(app, "/api/exercises/<string>/history")
-        ([&workout_service](const crow::request& req, crow::response& res,
-          forge::AuthMiddleware::context& ctx, const std::string& exercise_id) {
+        ([&app, &workout_service](const crow::request& req, crow::response& res, const std::string& exercise_id) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto limit_param = req.url_params.get("limit");
                 int limit = limit_param ? std::stoi(limit_param) : 5;
 
@@ -690,74 +701,76 @@ int main() {
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
-        // Placeholder for other endpoints
+        // ── Dashboard Endpoint ────────────────────────────────────────
         CROW_ROUTE(app, "/api/dashboard")
-        ([](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
-            // TODO: Implement dashboard logic
-            res.write(json({
-                {"today", {
-                    {"nutrition", {
-                        {"calories", {{"consumed", 0}, {"target", 2400}}},
-                        {"protein_g", {{"consumed", 0}, {"target", 176}}}
-                    }},
-                    {"workout", nullptr}
-                }},
-                {"week", {
-                    {"workout_days", json::array()},
-                    {"daily_calories", json::array()}
-                }}
-            }).dump());
-            res.end();
+        ([&app, &dashboard_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto data = dashboard_service.get_dashboard(ctx.user_id);
+                res.write(data.to_json().dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
         });
 
         // Profile endpoints
         CROW_ROUTE(app, "/api/profile")
-        ([](const crow::request&, crow::response& res, forge::AuthMiddleware::context& ctx) {
+        ([&app](const crow::request& req, crow::response& res) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto profile = forge::ProfileService::get_profile(ctx.user_id);
 
                 if (!profile.has_value()) {
                     res.code = 404;
-                    res.write(json({
+                    res.write(json{
                         {"error", {
                             {"code", "PROFILE_NOT_FOUND"},
                             {"message", "No profile found. Please complete onboarding."}
                         }}
-                    }).dump());
+                    }.dump());
                     res.end();
                     return;
                 }
 
                 res.code = 200;
                 res.add_header("Content-Type", "application/json");
-                res.write(json({{"profile", profile->to_json()}}).dump());
+                res.write(json{{"profile", profile->to_json()}}.dump());
                 res.end();
 
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         CROW_ROUTE(app, "/api/profile").methods("PUT"_method)
-        ([](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+        ([&app](const crow::request& req, crow::response& res) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto body = json::parse(req.body);
 
                 forge::ProfileService::UpdateProfileRequest update_req;
@@ -782,33 +795,34 @@ int main() {
 
                 res.code = 200;
                 res.add_header("Content-Type", "application/json");
-                res.write(json({{"profile", profile.to_json()}}).dump());
+                res.write(json{{"profile", profile.to_json()}}.dump());
                 res.end();
 
             } catch (const std::invalid_argument& e) {
                 res.code = 400;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", e.what()},
                         {"message", "Profile update failed"}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
         });
 
         CROW_ROUTE(app, "/api/profile/onboarding").methods("POST"_method)
-        ([](const crow::request& req, crow::response& res, forge::AuthMiddleware::context& ctx) {
+        ([&app](const crow::request& req, crow::response& res) {
             try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
                 auto body = json::parse(req.body);
 
                 forge::ProfileService::OnboardingRequest onboarding_req;
@@ -827,28 +841,856 @@ int main() {
 
                 res.code = 201;
                 res.add_header("Content-Type", "application/json");
-                res.write(json({{"profile", profile.to_json()}}).dump());
+                res.write(json{{"profile", profile.to_json()}}.dump());
                 res.end();
 
             } catch (const std::invalid_argument& e) {
                 res.code = 400;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", e.what()},
                         {"message", "Onboarding failed"}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             } catch (const std::exception& e) {
                 res.code = 500;
-                res.write(json({
+                res.write(json{
                     {"error", {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
-                }).dump());
+                }.dump());
                 res.end();
             }
+        });
+
+        // ── Weight Tracking Endpoints ─────────────────────────────
+
+        // POST /api/weight - Log a weight entry
+        CROW_ROUTE(app, "/api/weight").methods("POST"_method)
+        ([&app, &weight_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                double weight_kg = body["weight_kg"].get<double>();
+                std::optional<std::string> notes;
+                if (body.contains("notes") && !body["notes"].is_null()) {
+                    notes = body["notes"].get<std::string>();
+                }
+
+                auto entry = weight_service.log_weight(ctx.user_id, weight_kg, notes);
+
+                res.code = 201;
+                res.write(entry.to_json().dump());
+                res.end();
+
+            } catch (const std::invalid_argument& e) {
+                res.code = 400;
+                res.write(json{
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Failed to log weight"}
+                    }}
+                }.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/weight - Get weight history
+        CROW_ROUTE(app, "/api/weight")
+        ([&app, &weight_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto limit_param = req.url_params.get("limit");
+                int limit = limit_param ? std::stoi(limit_param) : 90;
+
+                auto entries = weight_service.get_weight_history(ctx.user_id, limit);
+
+                json data = json::array();
+                for (const auto& e : entries) {
+                    data.push_back(e.to_json());
+                }
+
+                res.write(json{{"data", data}}.dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/weight/trend - Get weight trend analysis
+        CROW_ROUTE(app, "/api/weight/trend")
+        ([&app, &weight_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto trend = weight_service.get_weight_trend(ctx.user_id);
+                res.write(trend.to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // ── Analytics Endpoints ──────────────────────────────────────
+
+        // GET /api/analytics/muscle-distribution
+        CROW_ROUTE(app, "/api/analytics/muscle-distribution")
+        ([&app, &analytics_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto days_param = req.url_params.get("days");
+                int days = days_param ? std::stoi(days_param) : 30;
+
+                auto distribution = analytics_service.get_muscle_distribution(ctx.user_id, days);
+
+                json data = json::array();
+                for (const auto& v : distribution) {
+                    data.push_back(v.to_json());
+                }
+
+                res.write(json{{"data", data}}.dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/analytics/prs - Personal record history
+        CROW_ROUTE(app, "/api/analytics/prs")
+        ([&app, &analytics_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto limit_param = req.url_params.get("limit");
+                int limit = limit_param ? std::stoi(limit_param) : 20;
+
+                auto prs = analytics_service.get_pr_history(ctx.user_id, limit);
+
+                json prs_json = json::array();
+                for (const auto& pr : prs) {
+                    prs_json.push_back(pr.to_json());
+                }
+
+                res.write(json{{"prs", prs_json}}.dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/analytics/consistency - Training consistency
+        CROW_ROUTE(app, "/api/analytics/consistency")
+        ([&app, &analytics_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto days_param = req.url_params.get("days");
+                int days = days_param ? std::stoi(days_param) : 30;
+
+                auto points = analytics_service.get_training_consistency(ctx.user_id, days);
+
+                json data = json::array();
+                for (const auto& pt : points) {
+                    data.push_back(pt.to_json());
+                }
+
+                res.write(json{{"data", data}}.dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/analytics/streaks - Streak data
+        CROW_ROUTE(app, "/api/analytics/streaks")
+        ([&app, &analytics_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto streaks = analytics_service.get_streaks(ctx.user_id);
+                res.write(streaks.to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // POST /api/analytics/nutrition-checkin - Weekly nutrition check-in
+        CROW_ROUTE(app, "/api/analytics/nutrition-checkin").methods("POST"_method)
+        ([&app, &analytics_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto recommendation = analytics_service.generate_nutrition_checkin(ctx.user_id);
+                res.write(recommendation.to_json().dump());
+                res.end();
+
+            } catch (const std::invalid_argument& e) {
+                res.code = 400;
+                res.write(json{
+                    {"error", {
+                        {"code", e.what()},
+                        {"message", "Nutrition check-in failed"}
+                    }}
+                }.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // ── Nutrition Tracking Endpoints ──────────────────────────────
+
+        // POST /api/nutrition/log - Log a food entry
+        CROW_ROUTE(app, "/api/nutrition/log").methods("POST"_method)
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::LogFoodRequest food_req;
+                food_req.food_name = body["food_name"].get<std::string>();
+                food_req.calories = body["calories"].get<double>();
+                food_req.protein_g = body["protein_g"].get<double>();
+                food_req.carbs_g = body["carbs_g"].get<double>();
+                food_req.fat_g = body["fat_g"].get<double>();
+
+                if (body.contains("meal_type") && !body["meal_type"].is_null())
+                    food_req.meal_type = body["meal_type"].get<std::string>();
+                if (body.contains("brand") && !body["brand"].is_null())
+                    food_req.brand = body["brand"].get<std::string>();
+                if (body.contains("serving_size") && !body["serving_size"].is_null())
+                    food_req.serving_size = body["serving_size"].get<double>();
+                if (body.contains("serving_unit") && !body["serving_unit"].is_null())
+                    food_req.serving_unit = body["serving_unit"].get<std::string>();
+                if (body.contains("quantity") && !body["quantity"].is_null())
+                    food_req.quantity = body["quantity"].get<double>();
+                if (body.contains("fiber_g") && !body["fiber_g"].is_null())
+                    food_req.fiber_g = body["fiber_g"].get<double>();
+                if (body.contains("sugar_g") && !body["sugar_g"].is_null())
+                    food_req.sugar_g = body["sugar_g"].get<double>();
+                if (body.contains("sodium_mg") && !body["sodium_mg"].is_null())
+                    food_req.sodium_mg = body["sodium_mg"].get<double>();
+                if (body.contains("is_custom") && !body["is_custom"].is_null())
+                    food_req.is_custom = body["is_custom"].get<bool>();
+                if (body.contains("source") && !body["source"].is_null())
+                    food_req.source = body["source"].get<std::string>();
+
+                auto log = nutrition_service.log_food(ctx.user_id, food_req);
+                res.code = 201;
+                res.write(log.to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {
+                        {"code", "INTERNAL_ERROR"},
+                        {"message", e.what()}
+                    }}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/log?date=YYYY-MM-DD - Get logs for a date
+        CROW_ROUTE(app, "/api/nutrition/log")
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto date_param = req.url_params.get("date");
+                if (!date_param) {
+                    res.code = 400;
+                    res.write(json{
+                        {"error", {{"code", "MISSING_DATE"}, {"message", "date parameter required"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+
+                auto logs = nutrition_service.get_logs_for_date(ctx.user_id, date_param);
+                json arr = json::array();
+                for (const auto& log : logs) {
+                    arr.push_back(log.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // PUT /api/nutrition/log/:id - Update a nutrition log entry
+        CROW_ROUTE(app, "/api/nutrition/log/<string>").methods("PUT"_method)
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res, const std::string& log_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::UpdateFoodRequest update_req;
+                if (body.contains("meal_type") && !body["meal_type"].is_null())
+                    update_req.meal_type = body["meal_type"].get<std::string>();
+                if (body.contains("food_name") && !body["food_name"].is_null())
+                    update_req.food_name = body["food_name"].get<std::string>();
+                if (body.contains("serving_size") && !body["serving_size"].is_null())
+                    update_req.serving_size = body["serving_size"].get<double>();
+                if (body.contains("serving_unit") && !body["serving_unit"].is_null())
+                    update_req.serving_unit = body["serving_unit"].get<std::string>();
+                if (body.contains("quantity") && !body["quantity"].is_null())
+                    update_req.quantity = body["quantity"].get<double>();
+                if (body.contains("calories") && !body["calories"].is_null())
+                    update_req.calories = body["calories"].get<double>();
+                if (body.contains("protein_g") && !body["protein_g"].is_null())
+                    update_req.protein_g = body["protein_g"].get<double>();
+                if (body.contains("carbs_g") && !body["carbs_g"].is_null())
+                    update_req.carbs_g = body["carbs_g"].get<double>();
+                if (body.contains("fat_g") && !body["fat_g"].is_null())
+                    update_req.fat_g = body["fat_g"].get<double>();
+
+                auto log = nutrition_service.update_log(ctx.user_id, log_id, update_req);
+                res.write(log.to_json().dump());
+                res.end();
+
+            } catch (const std::invalid_argument& e) {
+                res.code = 404;
+                res.write(json{
+                    {"error", {{"code", e.what()}, {"message", "Log not found"}}}
+                }.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // DELETE /api/nutrition/log/:id - Delete a nutrition log entry
+        CROW_ROUTE(app, "/api/nutrition/log/<string>").methods("DELETE"_method)
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res, const std::string& log_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                bool deleted = nutrition_service.delete_log(ctx.user_id, log_id);
+                if (!deleted) {
+                    res.code = 404;
+                    res.write(json{
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Log not found"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                res.write(json{{"success", true}}.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/summary?date=YYYY-MM-DD - Daily summary
+        CROW_ROUTE(app, "/api/nutrition/summary")
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto date_param = req.url_params.get("date");
+                if (!date_param) {
+                    res.code = 400;
+                    res.write(json{
+                        {"error", {{"code", "MISSING_DATE"}, {"message", "date parameter required"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                auto summary = nutrition_service.get_daily_summary(ctx.user_id, date_param);
+                res.write(summary.to_json().dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/summary/range?start=...&end=... - Range summary
+        CROW_ROUTE(app, "/api/nutrition/summary/range")
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto start_param = req.url_params.get("start");
+                auto end_param = req.url_params.get("end");
+                if (!start_param || !end_param) {
+                    res.code = 400;
+                    res.write(json{
+                        {"error", {{"code", "MISSING_PARAMS"}, {"message", "start and end required"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                auto summaries = nutrition_service.get_summary_range(ctx.user_id, start_param, end_param);
+                json arr = json::array();
+                for (const auto& s : summaries) {
+                    arr.push_back(s.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // POST /api/nutrition/foods - Create custom food
+        CROW_ROUTE(app, "/api/nutrition/foods").methods("POST"_method)
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                forge::NutritionService::CreateCustomFoodRequest food_req;
+                food_req.name = body["name"].get<std::string>();
+                food_req.serving_size = body["serving_size"].get<double>();
+                food_req.serving_unit = body["serving_unit"].get<std::string>();
+                food_req.calories = body["calories"].get<double>();
+                food_req.protein_g = body["protein_g"].get<double>();
+                food_req.carbs_g = body["carbs_g"].get<double>();
+                food_req.fat_g = body["fat_g"].get<double>();
+                if (body.contains("brand") && !body["brand"].is_null())
+                    food_req.brand = body["brand"].get<std::string>();
+
+                auto food = nutrition_service.create_custom_food(ctx.user_id, food_req);
+                res.code = 201;
+                res.write(food.to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/foods - List custom foods
+        CROW_ROUTE(app, "/api/nutrition/foods")
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto foods = nutrition_service.get_custom_foods(ctx.user_id);
+                json arr = json::array();
+                for (const auto& f : foods) {
+                    arr.push_back(f.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // DELETE /api/nutrition/foods/:id - Delete custom food
+        CROW_ROUTE(app, "/api/nutrition/foods/<string>").methods("DELETE"_method)
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res, const std::string& food_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                bool deleted = nutrition_service.delete_custom_food(ctx.user_id, food_id);
+                if (!deleted) {
+                    res.code = 404;
+                    res.write(json{
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Custom food not found"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                res.write(json{{"success", true}}.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/recent - Recent foods
+        CROW_ROUTE(app, "/api/nutrition/recent")
+        ([&app, &nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto foods = nutrition_service.get_recent_foods(ctx.user_id);
+                json arr = json::array();
+                for (const auto& f : foods) {
+                    arr.push_back(f.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/nutrition/search?q=... - Search USDA foods
+        CROW_ROUTE(app, "/api/nutrition/search")
+        ([&nutrition_service](const crow::request& req, crow::response& res) {
+            try {
+                auto q = req.url_params.get("q");
+                if (!q) {
+                    res.code = 400;
+                    res.write(json{
+                        {"error", {{"code", "MISSING_QUERY"}, {"message", "q parameter required"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                auto foods = nutrition_service.search_usda(q);
+                json arr = json::array();
+                for (const auto& f : foods) {
+                    arr.push_back(f.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // ── Routine Endpoints ────────────────────────────────────────
+
+        // POST /api/routines - Create a routine
+        CROW_ROUTE(app, "/api/routines").methods("POST"_method)
+        ([&app, &routine_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                forge::CreateRoutineRequest routine_req;
+                routine_req.name = body["name"].get<std::string>();
+                if (body.contains("description") && !body["description"].is_null())
+                    routine_req.description = body["description"].get<std::string>();
+
+                if (body.contains("exercises")) {
+                    for (const auto& ex : body["exercises"]) {
+                        forge::CreateRoutineExerciseRequest ex_req;
+                        ex_req.exercise_id = ex["exercise_id"].get<std::string>();
+                        if (ex.contains("notes") && !ex["notes"].is_null())
+                            ex_req.notes = ex["notes"].get<std::string>();
+
+                        if (ex.contains("sets")) {
+                            for (const auto& s : ex["sets"]) {
+                                forge::CreateRoutineSetRequest set_req;
+                                if (s.contains("set_type") && !s["set_type"].is_null())
+                                    set_req.set_type = s["set_type"].get<std::string>();
+                                if (s.contains("target_reps") && !s["target_reps"].is_null())
+                                    set_req.target_reps = s["target_reps"].get<int>();
+                                if (s.contains("target_duration_seconds") && !s["target_duration_seconds"].is_null())
+                                    set_req.target_duration_seconds = s["target_duration_seconds"].get<int>();
+                                ex_req.sets.push_back(std::move(set_req));
+                            }
+                        }
+                        routine_req.exercises.push_back(std::move(ex_req));
+                    }
+                }
+
+                auto routine = routine_service.create_routine(ctx.user_id, routine_req);
+                res.code = 201;
+                res.write(routine.to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/routines - List routines
+        CROW_ROUTE(app, "/api/routines")
+        ([&app, &routine_service](const crow::request& req, crow::response& res) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto routines = routine_service.list_routines(ctx.user_id);
+                json arr = json::array();
+                for (const auto& r : routines) {
+                    arr.push_back(r.to_json());
+                }
+                res.write(arr.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // GET /api/routines/:id - Get routine detail
+        CROW_ROUTE(app, "/api/routines/<string>")
+        ([&app, &routine_service](const crow::request& req, crow::response& res, const std::string& routine_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto routine = routine_service.get_routine(ctx.user_id, routine_id);
+                if (!routine) {
+                    res.code = 404;
+                    res.write(json{
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Routine not found"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                res.write(routine->to_json().dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // PUT /api/routines/:id - Update routine
+        CROW_ROUTE(app, "/api/routines/<string>").methods("PUT"_method)
+        ([&app, &routine_service](const crow::request& req, crow::response& res, const std::string& routine_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                auto body = json::parse(req.body);
+
+                forge::CreateRoutineRequest routine_req;
+                routine_req.name = body["name"].get<std::string>();
+                if (body.contains("description") && !body["description"].is_null())
+                    routine_req.description = body["description"].get<std::string>();
+
+                if (body.contains("exercises")) {
+                    for (const auto& ex : body["exercises"]) {
+                        forge::CreateRoutineExerciseRequest ex_req;
+                        ex_req.exercise_id = ex["exercise_id"].get<std::string>();
+                        if (ex.contains("notes") && !ex["notes"].is_null())
+                            ex_req.notes = ex["notes"].get<std::string>();
+
+                        if (ex.contains("sets")) {
+                            for (const auto& s : ex["sets"]) {
+                                forge::CreateRoutineSetRequest set_req;
+                                if (s.contains("set_type") && !s["set_type"].is_null())
+                                    set_req.set_type = s["set_type"].get<std::string>();
+                                if (s.contains("target_reps") && !s["target_reps"].is_null())
+                                    set_req.target_reps = s["target_reps"].get<int>();
+                                if (s.contains("target_duration_seconds") && !s["target_duration_seconds"].is_null())
+                                    set_req.target_duration_seconds = s["target_duration_seconds"].get<int>();
+                                ex_req.sets.push_back(std::move(set_req));
+                            }
+                        }
+                        routine_req.exercises.push_back(std::move(ex_req));
+                    }
+                }
+
+                auto routine = routine_service.update_routine(ctx.user_id, routine_id, routine_req);
+                if (!routine) {
+                    res.code = 404;
+                    res.write(json{
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Routine not found"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                res.write(routine->to_json().dump());
+                res.end();
+
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // DELETE /api/routines/:id - Delete routine
+        CROW_ROUTE(app, "/api/routines/<string>").methods("DELETE"_method)
+        ([&app, &routine_service](const crow::request& req, crow::response& res, const std::string& routine_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                bool deleted = routine_service.delete_routine(ctx.user_id, routine_id);
+                if (!deleted) {
+                    res.code = 404;
+                    res.write(json{
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Routine not found"}}}
+                    }.dump());
+                    res.end();
+                    return;
+                }
+                res.write(json{{"success", true}}.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // POST /api/routines/:id/start - Start workout from routine
+        CROW_ROUTE(app, "/api/routines/<string>/start").methods("POST"_method)
+        ([&app, &routine_service](const crow::request& req, crow::response& res, const std::string& routine_id) {
+            try {
+                auto& ctx = app.get_context<forge::AuthMiddleware>(req);
+                std::string workout_id = routine_service.start_from_routine(ctx.user_id, routine_id);
+                res.code = 201;
+                res.write(json{
+                    {"id", workout_id},
+                    {"status", "in_progress"},
+                    {"message", "Workout started from routine"}
+                }.dump());
+                res.end();
+            } catch (const std::invalid_argument& e) {
+                res.code = 404;
+                res.write(json{
+                    {"error", {{"code", e.what()}, {"message", "Routine not found"}}}
+                }.dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json{
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
+                }.dump());
+                res.end();
+            }
+        });
+
+        // ── Stub Endpoints (Food Recognition & Coaching) ─────────────
+
+        // POST /api/nutrition/recognize - Food recognition stub
+        CROW_ROUTE(app, "/api/nutrition/recognize").methods("POST"_method)
+        ([](const crow::request&, crow::response& res) {
+            res.code = 200;
+            res.write(json{
+                {"task_id", "stub-not-implemented"}
+            }.dump());
+            res.end();
+        });
+
+        // GET /api/nutrition/recognize/:id - Food recognition status stub
+        CROW_ROUTE(app, "/api/nutrition/recognize/<string>")
+        ([](const crow::request&, crow::response& res, const std::string&) {
+            res.code = 200;
+            res.write(json{
+                {"status", "not_implemented"},
+                {"message", "Food recognition coming soon"}
+            }.dump());
+            res.end();
+        });
+
+        // POST /api/nutrition/recognize/:id/confirm - Confirm recognition stub
+        CROW_ROUTE(app, "/api/nutrition/recognize/<string>/confirm").methods("POST"_method)
+        ([](const crow::request&, crow::response& res, const std::string&) {
+            res.code = 200;
+            res.write(json{
+                {"success", true},
+                {"message", "Confirmed (stub)"}
+            }.dump());
+            res.end();
+        });
+
+        // POST /api/coaching/weekly-checkin - Coaching stub
+        CROW_ROUTE(app, "/api/coaching/weekly-checkin").methods("POST"_method)
+        ([](const crow::request&, crow::response& res) {
+            res.code = 200;
+            res.write(json{
+                {"message", "Coaching feature coming soon"}
+            }.dump());
+            res.end();
         });
 
         // Start server

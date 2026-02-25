@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libpqxx-dev \
     libssl-dev \
+    libcurl4-openssl-dev \
+    libasio-dev \
+    libboost-system-dev \
+    libboost-date-time-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,13 +39,18 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     libpqxx-6.4 \
     libssl3 \
+    libcurl4 \
+    curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy binary and migrations from builder
+# Copy binary, migrations, and migration runner from builder
 COPY --from=builder /app/build/forge ./
 COPY --from=builder /app/migrations ./migrations/
+COPY run_migrations.sh ./
+RUN chmod +x run_migrations.sh
 
 # Non-root user
 RUN useradd -m -u 1000 forge && chown -R forge:forge /app

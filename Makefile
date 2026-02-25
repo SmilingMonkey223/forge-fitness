@@ -32,7 +32,7 @@ dev:
 
 dev-backend:
 	@echo "Starting backend server..."
-	cd backend/build && ./forge
+	@if [ -f .env ]; then set -a && . ./.env && set +a; fi && cd backend/build && ./forge
 
 dev-frontend:
 	@echo "Starting frontend dev server..."
@@ -80,11 +80,7 @@ migrate:
 # Docker
 docker-up:
 	@echo "Starting Docker services..."
-	docker-compose up -d
-	@echo "Services started! Waiting for database..."
-	@sleep 5
-	@echo "Running migrations..."
-	@$(MAKE) migrate DATABASE_URL=postgresql://forge:forge@localhost:5432/forge
+	docker compose up -d --build
 	@echo ""
 	@echo "FORGE is ready!"
 	@echo "  - Backend API: http://localhost:8080"
@@ -93,12 +89,12 @@ docker-up:
 
 docker-down:
 	@echo "Stopping Docker services..."
-	docker-compose down
+	docker compose down
 	@echo "Services stopped!"
 
 docker-clean:
 	@echo "Removing Docker volumes and images..."
-	docker-compose down -v
+	docker compose down -v
 	@echo "Cleaned!"
 
 # Lint
