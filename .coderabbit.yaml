@@ -1,0 +1,63 @@
+# CodeRabbit Configuration for FORGE
+# https://docs.coderabbit.ai/guides/review-instructions
+
+language: en-US
+early_access: true
+reviews:
+  # Review settings
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - develop
+      - "^feat/.*$"
+      - "^fix/.*$"
+
+  # Review depth
+  profile: chill
+
+  # Focus areas
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+
+  # Specific checks
+  path_filters:
+    - "!backend/migrations/*.sql"
+    - "!node_modules/**"
+    - "!**/*.md"
+    - "!**/*.log"
+    - "!**/*.lock"
+    - "!build/**"
+    - "!dist/**"
+
+  # Path-specific review instructions
+  path_instructions:
+    - path: "**/*.cpp"
+      instructions: |
+        Focus on security vulnerabilities (SQL injection, authentication issues).
+        Check for C++ memory leaks and undefined behavior.
+        Verify proper error handling.
+        Check that tests are included for new features.
+        Ensure code follows project conventions (see CONTRIBUTING.md).
+    - path: "**/*.hpp"
+      instructions: |
+        Check for C++ memory leaks and undefined behavior.
+        Ensure proper use of const, references, and smart pointers.
+    - path: "**/*.tsx"
+      instructions: |
+        Verify React hooks dependencies are correct.
+        Check for XSS vulnerabilities.
+        Check for performance issues (unnecessary re-renders).
+        Ensure TypeScript strict mode compliance.
+        Ensure code follows project conventions (see CONTRIBUTING.md).
+    - path: "**/*.ts"
+      instructions: |
+        Ensure TypeScript strict mode compliance.
+        Check for performance issues (N+1 queries).
+        Verify proper error handling.
+
+chat:
+  auto_reply: true
