@@ -34,8 +34,15 @@ function App() {
     try {
       await api.getProfile()
       setHasProfile(true)
-    } catch {
-      setHasProfile(false)
+    } catch (err: unknown) {
+      // Only treat 404 (no profile) as "needs onboarding"
+      // Network errors or server errors should not force onboarding
+      if (err instanceof Error && err.message === 'PROFILE_NOT_FOUND') {
+        setHasProfile(false)
+      } else {
+        // On network/server error, assume profile exists to avoid forcing onboarding
+        setHasProfile(true)
+      }
     }
   }, [])
 
@@ -94,7 +101,11 @@ function App() {
     isAuthenticated ? element : <Navigate to="/login" />
 
   const withLayout = (element: React.ReactNode) =>
-    requireAuth(<AuthenticatedLayout>{element}</AuthenticatedLayout>)
+    requireAuth(
+      hasProfile === false
+        ? <Navigate to="/onboarding" />
+        : <AuthenticatedLayout>{element}</AuthenticatedLayout>
+    )
 
   return (
     <Routes>

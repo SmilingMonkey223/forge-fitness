@@ -36,7 +36,9 @@ export default function RestTimer() {
     }
   }, [restTimerRunning, restTimerSeconds, restTimerTotal])
 
-  if (!restTimerRunning && restTimerSeconds === 0) return null
+  const isFinished = !restTimerRunning && restTimerSeconds === 0 && restTimerTotal > 0
+
+  if (!restTimerRunning && restTimerSeconds === 0 && !isFinished) return null
 
   const progress = restTimerTotal > 0 ? restTimerSeconds / restTimerTotal : 0
   const radius = 54
@@ -47,12 +49,13 @@ export default function RestTimer() {
   const seconds = restTimerSeconds % 60
   const timeDisplay = `${minutes}:${seconds.toString().padStart(2, '0')}`
 
-  const isFinished = !restTimerRunning && restTimerSeconds === 0 && restTimerTotal > 0
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      role="button"
+      tabIndex={0}
       onClick={stopRestTimer}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') stopRestTimer() }}
     >
       <div
         className="flex flex-col items-center gap-6"
@@ -99,6 +102,7 @@ export default function RestTimer() {
         {restTimerRunning && (
           <div className="flex gap-4">
             <button
+              type="button"
               onClick={() => adjustRestTimer(-30)}
               className="tap-target px-5 py-3 bg-surface-elevated rounded-button text-text-secondary
                          text-lg font-mono hover:bg-surface active:scale-95 transition-all"
@@ -106,6 +110,7 @@ export default function RestTimer() {
               -30s
             </button>
             <button
+              type="button"
               onClick={() => adjustRestTimer(30)}
               className="tap-target px-5 py-3 bg-surface-elevated rounded-button text-text-secondary
                          text-lg font-mono hover:bg-surface active:scale-95 transition-all"
@@ -117,6 +122,7 @@ export default function RestTimer() {
 
         {/* Dismiss hint */}
         <button
+          type="button"
           onClick={stopRestTimer}
           className="tap-target text-text-muted text-sm hover:text-text-secondary transition-colors"
         >
