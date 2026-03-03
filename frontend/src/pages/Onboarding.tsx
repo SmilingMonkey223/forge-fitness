@@ -123,8 +123,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         })
 
         goNext()
-      } catch (err: any) {
-        const code = err.message
+      } catch (err: unknown) {
+        const code = err instanceof Error ? err.message : ''
         if (code === 'PROFILE_ALREADY_EXISTS') {
           setError('Profile already exists. Redirecting to dashboard...')
           setTimeout(() => {
@@ -212,20 +212,22 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* Date of Birth */}
         <div>
-          <label className="label">Date of Birth</label>
+          <label htmlFor="onboarding-dob" className="label">Date of Birth</label>
           <input
+            id="onboarding-dob"
             type="date"
             className="input"
             value={data.date_of_birth}
             onChange={(e) => setData({ ...data, date_of_birth: e.target.value })}
-            max={new Date(new Date().setFullYear(new Date().getFullYear() - 13)).toISOString().split('T')[0]}
+            max={(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 13); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${day}` })()}
           />
         </div>
 
         {/* Height */}
         <div>
-          <label className="label">Height (cm)</label>
+          <label htmlFor="onboarding-height" className="label">Height (cm)</label>
           <input
+            id="onboarding-height"
             type="number"
             className="input"
             placeholder="e.g. 175"
@@ -239,8 +241,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* Weight */}
         <div>
-          <label className="label">Weight (kg)</label>
+          <label htmlFor="onboarding-weight" className="label">Weight (kg)</label>
           <input
+            id="onboarding-weight"
             type="number"
             className="input"
             placeholder="e.g. 80"

@@ -46,8 +46,8 @@ export default function Analytics() {
         setConsistency(consistencyRes.data)
         setStreaks(streaksRes)
       }
-    } catch (err) {
-      console.error('Failed to load analytics:', err)
+    } catch {
+      // Analytics loading failed silently
     } finally {
       setLoading(false)
     }
@@ -86,7 +86,7 @@ export default function Analytics() {
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="text-gray-600">
+          <button type="button" onClick={() => navigate(-1)} className="text-gray-600">
             ← Back
           </button>
           <h1 className="text-lg font-semibold">Analytics</h1>
@@ -97,6 +97,7 @@ export default function Analytics() {
         <div className="max-w-lg mx-auto px-4">
           <div className="flex border-b">
             <button
+              type="button"
               onClick={() => setActiveTab('training')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'training'
@@ -107,6 +108,7 @@ export default function Analytics() {
               Training
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('nutrition')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'nutrition'
@@ -241,7 +243,7 @@ export default function Analytics() {
                       <div key={group.muscle_group} className="flex items-center gap-2">
                         <div className={`w-3 h-3 rounded-full ${getMuscleColor(i)}`} />
                         <span className="text-sm text-gray-600 flex-1 capitalize">
-                          {group.muscle_group.replace('_', ' ')}
+                          {group.muscle_group.replace(/_/g, ' ')}
                         </span>
                         <span className="text-sm font-medium">{group.total_sets}</span>
                       </div>
@@ -351,10 +353,10 @@ export default function Analytics() {
                   )}
 
                   <div className="flex gap-3">
-                    <button className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium">
+                    <button type="button" className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium">
                       Accept Targets
                     </button>
-                    <button className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium">
+                    <button type="button" className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium">
                       Skip This Week
                     </button>
                   </div>
@@ -365,6 +367,7 @@ export default function Analytics() {
                     Get personalized calorie and macro recommendations based on your actual progress.
                   </p>
                   <button
+                    type="button"
                     onClick={generateCheckin}
                     disabled={checkinLoading}
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50"
@@ -375,73 +378,11 @@ export default function Analytics() {
               )}
             </div>
 
-            {/* Calorie Adherence */}
+            {/* Calorie & Protein Adherence - Coming Soon */}
             <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Calorie Adherence</h2>
-              <div className="flex items-center justify-center">
-                <div className="relative w-32 h-32">
-                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="#e5e7eb"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="#22c55e"
-                      strokeWidth="12"
-                      strokeDasharray={`${78 * 2.51} ${100 * 2.51}`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold">78%</span>
-                  </div>
-                </div>
-              </div>
-              <p className="text-center text-gray-600 mt-4">
-                You hit your calorie target <strong>78%</strong> of days this month
-              </p>
-            </div>
-
-            {/* Protein Hit Rate */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Protein Target</h2>
-              <div className="flex items-center justify-center">
-                <div className="relative w-32 h-32">
-                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="#e5e7eb"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="#3b82f6"
-                      strokeWidth="12"
-                      strokeDasharray={`${85 * 2.51} ${100 * 2.51}`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold">85%</span>
-                  </div>
-                </div>
-              </div>
-              <p className="text-center text-gray-600 mt-4">
-                You hit ≥1.6g/kg protein on <strong>22 of 26</strong> days this month
+              <h2 className="text-lg font-medium mb-4">Adherence Tracking</h2>
+              <p className="text-gray-400 text-center py-8">
+                Calorie and protein adherence tracking will appear here once you have enough nutrition data logged.
               </p>
             </div>
           </>

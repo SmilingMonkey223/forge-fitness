@@ -44,8 +44,21 @@ void ProfileService::validate_date_of_birth(const std::string& dob) {
     std::istringstream iss(dob);
     iss >> year >> dash1 >> month >> dash2 >> day;
 
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
+    if (month < 1 || month > 12 || day < 1) {
         throw std::invalid_argument("INVALID_DATE_OF_BIRTH");
+    }
+
+    // Per-month day validation
+    static const int days_in_month[] = {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (day > days_in_month[month]) {
+        throw std::invalid_argument("INVALID_DATE_OF_BIRTH");
+    }
+    // Reject Feb 29 on non-leap years
+    if (month == 2 && day == 29) {
+        bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        if (!leap) {
+            throw std::invalid_argument("INVALID_DATE_OF_BIRTH");
+        }
     }
 
     // Check age is reasonable (13-120 years)
@@ -77,11 +90,12 @@ int ProfileService::calculate_age(const std::string& date_of_birth) {
 
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    std::tm* tm_now = std::gmtime(&time_t_now);
+    std::tm tm_buf = {};
+    gmtime_r(&time_t_now, &tm_buf);
 
-    int current_year = tm_now->tm_year + 1900;
-    int current_month = tm_now->tm_mon + 1;
-    int current_day = tm_now->tm_mday;
+    int current_year = tm_buf.tm_year + 1900;
+    int current_month = tm_buf.tm_mon + 1;
+    int current_day = tm_buf.tm_mday;
 
     int age = current_year - birth_year;
 
@@ -140,8 +154,8 @@ ProfileService::MacroTargets ProfileService::calculate_macros(
     MacroTargets targets;
     targets.tdee_calories = std::round(tdee);
 
-    double protein_per_kg = 0.0;
-    double fat_per_kg = 0.0;
+    double protein_per_kg = 1.8;
+    double fat_per_kg = 1.0;
 
     if (fitness_goal == "lose_fat") {
         targets.target_calories = std::round(tdee - 500.0);
@@ -155,6 +169,8 @@ ProfileService::MacroTargets ProfileService::calculate_macros(
         targets.target_calories = std::round(tdee + 300.0);
         protein_per_kg = 2.2;
         fat_per_kg = 1.0;
+    } else {
+        throw std::invalid_argument("INVALID_FITNESS_GOAL");
     }
 
     targets.target_protein_g = std::round(protein_per_kg * weight_kg);
@@ -224,6 +240,9 @@ UserProfile ProfileService::complete_onboarding(const OnboardingRequest& req) {
     validate_date_of_birth(req.date_of_birth);
     validate_height(req.height_cm);
     validate_weight(req.weight_kg);
+    if (req.unit_preference != "metric" && req.unit_preference != "imperial") {
+        throw std::invalid_argument("INVALID_UNIT_PREFERENCE");
+    }
 
     // Check if profile already exists
     auto existing = get_profile(req.user_id);

@@ -22,6 +22,7 @@ interface PortionEditorProps {
 function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) {
   const [quantity, setQuantity] = useState(1)
   const [logging, setLogging] = useState(false)
+  const [logError, setLogError] = useState<string | null>(null)
 
   const cals = Math.round(food.calories * quantity)
   const protein = Math.round(food.protein_g * quantity * 10) / 10
@@ -30,6 +31,7 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
 
   const handleLog = async () => {
     setLogging(true)
+    setLogError(null)
     try {
       await api.logNutrition({
         meal_type: mealType,
@@ -44,7 +46,7 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
       })
       onLog()
     } catch {
-      alert('Failed to log food')
+      setLogError('Failed to log food. Please try again.')
     } finally {
       setLogging(false)
     }
@@ -52,6 +54,11 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
 
   return (
     <div className="p-4 space-y-4">
+      {logError && (
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
+          {logError}
+        </div>
+      )}
       <div>
         <h3 className="font-bold text-text-primary">{food.name}</h3>
         {food.brand && <div className="text-sm text-text-muted">{food.brand}</div>}

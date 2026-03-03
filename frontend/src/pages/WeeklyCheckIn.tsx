@@ -10,11 +10,13 @@ export function WeeklyCheckIn() {
   const [notes, setNotes] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setSuccessMessage('')
+    setErrorMessage('')
 
     try {
       await api.submitWeeklyCheckin({
@@ -30,9 +32,8 @@ export function WeeklyCheckIn() {
       setTimeout(() => {
         navigate('/')
       }, 2000)
-    } catch (error) {
-      console.error('Failed to submit check-in:', error)
-      alert('Failed to submit check-in. Please try again.')
+    } catch {
+      setErrorMessage('Failed to submit check-in. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -97,6 +98,12 @@ export function WeeklyCheckIn() {
         {successMessage && (
           <div className="bg-green-500 bg-opacity-10 border border-green-500 rounded-lg p-4 mb-6">
             <p className="text-green-500">{successMessage}</p>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="bg-red-500 bg-opacity-10 border border-red-500 rounded-lg p-4 mb-6">
+            <p className="text-red-500">{errorMessage}</p>
           </div>
         )}
 

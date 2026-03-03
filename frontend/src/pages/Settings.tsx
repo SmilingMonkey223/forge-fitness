@@ -13,10 +13,13 @@ function calculateTDEE(profile: UserProfile): number {
     (Date.now() - new Date(profile.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
   )
   let bmr: number
+  const baseBmr = 10 * profile.weight_kg + 6.25 * profile.height_cm - 5 * age - 161
   if (profile.sex === 'male') {
-    bmr = 10 * profile.weight_kg + 6.25 * profile.height_cm - 5 * age + 5
+    bmr = baseBmr + 166 // -161 + 166 = +5 (Mifflin-St Jeor male offset)
+  } else if (profile.sex === 'other') {
+    bmr = baseBmr + 83 // midpoint between male and female
   } else {
-    bmr = 10 * profile.weight_kg + 6.25 * profile.height_cm - 5 * age - 161
+    bmr = baseBmr
   }
   const multipliers: Record<string, number> = {
     sedentary: 1.2,
@@ -73,7 +76,6 @@ export default function Settings({ onLogout }: SettingsProps) {
   }
 
   const handleLogout = () => {
-    api.logout()
     onLogout()
     navigate('/login', { replace: true })
   }
@@ -120,8 +122,9 @@ export default function Settings({ onLogout }: SettingsProps) {
           <h3 className="text-primary mb-4">Body Stats</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Height (cm)</label>
+              <label htmlFor="settings-height" className="label">Height (cm)</label>
               <input
+                id="settings-height"
                 type="number"
                 value={form.height_cm || ''}
                 onChange={(e) => setForm({ ...form, height_cm: Number(e.target.value) })}
@@ -129,8 +132,9 @@ export default function Settings({ onLogout }: SettingsProps) {
               />
             </div>
             <div>
-              <label className="label">Weight (kg)</label>
+              <label htmlFor="settings-weight" className="label">Weight (kg)</label>
               <input
+                id="settings-weight"
                 type="number"
                 value={form.weight_kg || ''}
                 onChange={(e) => setForm({ ...form, weight_kg: Number(e.target.value) })}
@@ -138,8 +142,9 @@ export default function Settings({ onLogout }: SettingsProps) {
               />
             </div>
             <div>
-              <label className="label">Date of Birth</label>
+              <label htmlFor="settings-dob" className="label">Date of Birth</label>
               <input
+                id="settings-dob"
                 type="date"
                 value={form.date_of_birth || ''}
                 onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
@@ -147,8 +152,9 @@ export default function Settings({ onLogout }: SettingsProps) {
               />
             </div>
             <div>
-              <label className="label">Sex</label>
+              <label htmlFor="settings-sex" className="label">Sex</label>
               <select
+                id="settings-sex"
                 value={form.sex || ''}
                 onChange={(e) => setForm({ ...form, sex: e.target.value as UserProfile['sex'] })}
                 className="input"
@@ -166,8 +172,9 @@ export default function Settings({ onLogout }: SettingsProps) {
           <h3 className="text-primary mb-4">Goals</h3>
           <div className="space-y-4">
             <div>
-              <label className="label">Activity Level</label>
+              <label htmlFor="settings-activity" className="label">Activity Level</label>
               <select
+                id="settings-activity"
                 value={form.activity_level || ''}
                 onChange={(e) => setForm({ ...form, activity_level: e.target.value as UserProfile['activity_level'] })}
                 className="input"
@@ -180,8 +187,9 @@ export default function Settings({ onLogout }: SettingsProps) {
               </select>
             </div>
             <div>
-              <label className="label">Fitness Goal</label>
+              <label htmlFor="settings-goal" className="label">Fitness Goal</label>
               <select
+                id="settings-goal"
                 value={form.fitness_goal || ''}
                 onChange={(e) => setForm({ ...form, fitness_goal: e.target.value as UserProfile['fitness_goal'] })}
                 className="input"
@@ -197,6 +205,7 @@ export default function Settings({ onLogout }: SettingsProps) {
                 {(['metric', 'imperial'] as const).map((unit) => (
                   <button
                     key={unit}
+                    type="button"
                     onClick={() => setForm({ ...form, unit_preference: unit })}
                     className={`tap-target flex-1 py-3 rounded-lg font-medium capitalize transition-all ${
                       form.unit_preference === unit
@@ -245,14 +254,14 @@ export default function Settings({ onLogout }: SettingsProps) {
         </section>
 
         {/* Save */}
-        <button onClick={handleSave} disabled={saving} className="btn-primary w-full">
+        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary w-full">
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
 
         {/* Account */}
         <section className="card">
           <h3 className="text-danger mb-4">Account</h3>
-          <button onClick={handleLogout} className="btn-secondary w-full mb-3">
+          <button type="button" onClick={handleLogout} className="btn-secondary w-full mb-3">
             Log Out
           </button>
         </section>

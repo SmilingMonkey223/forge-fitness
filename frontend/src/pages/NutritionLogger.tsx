@@ -5,7 +5,10 @@ import type { NutritionLog } from '@/types'
 import FoodSearch from '@/components/FoodSearch'
 
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0]
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function displayDate(dateStr: string): string {
@@ -57,6 +60,12 @@ export function NutritionLogger() {
     queryKey: ['nutrition-summary', date],
     queryFn: () => api.getNutritionSummary(date),
   })
+
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => api.getProfile(),
+  })
+  const profile = (profileData as { profile?: { target_calories?: number; target_protein_g?: number; target_carbs_g?: number; target_fat_g?: number } } | undefined)?.profile
 
   const mealGroups = useMemo(() => {
     const groups: Record<MealType, NutritionLog[]> = {
@@ -116,11 +125,10 @@ export function NutritionLogger() {
   const totalProtein = summary?.total_protein_g || 0
   const totalCarbs = summary?.total_carbs_g || 0
   const totalFat = summary?.total_fat_g || 0
-  // Targets would come from profile; using defaults
-  const targetCals = 2400
-  const targetProtein = 180
-  const targetCarbs = 280
-  const targetFat = 80
+  const targetCals = profile?.target_calories || 2400
+  const targetProtein = profile?.target_protein_g || 180
+  const targetCarbs = profile?.target_carbs_g || 280
+  const targetFat = profile?.target_fat_g || 80
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -137,8 +145,8 @@ export function NutritionLogger() {
           <h1 className="text-2xl font-bold text-center mb-4">Nutrition</h1>
           {/* Date selector */}
           <div className="flex items-center justify-center gap-4">
-            <button onClick={() => changeDate(-1)} className="tap-target p-2 text-text-secondary hover:text-text-primary">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+            <button type="button" onClick={() => changeDate(-1)} className="tap-target p-2 text-text-secondary hover:text-text-primary" aria-label="Previous day">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M12 4l-6 6 6 6" />
               </svg>
             </button>
@@ -154,8 +162,8 @@ export function NutritionLogger() {
             >
               {displayDate(date)}
             </button>
-            <button onClick={() => changeDate(1)} className="tap-target p-2 text-text-secondary hover:text-text-primary">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+            <button type="button" onClick={() => changeDate(1)} className="tap-target p-2 text-text-secondary hover:text-text-primary" aria-label="Next day">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M8 4l6 6-6 6" />
               </svg>
             </button>
