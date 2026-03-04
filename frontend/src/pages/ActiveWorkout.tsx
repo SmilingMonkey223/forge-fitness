@@ -24,7 +24,7 @@ interface SetInputRowProps {
 function SetInputRow({ setNumber, previous, onConfirm, defaultWeight, defaultReps }: SetInputRowProps) {
   const [weight, setWeight] = useState(defaultWeight ?? 0)
   const [reps, setReps] = useState(defaultReps ?? 0)
-  const [rpe] = useState<number | undefined>(undefined)
+  const [rpe, setRpe] = useState<number | undefined>(undefined)
   const [setType, setSetType] = useState<ExerciseSet['set_type']>('working')
   const [confirmed, setConfirmed] = useState(false)
   const [flash, setFlash] = useState(false)
@@ -39,124 +39,151 @@ function SetInputRow({ setNumber, previous, onConfirm, defaultWeight, defaultRep
 
   const setTypes: ExerciseSet['set_type'][] = ['working', 'warmup', 'drop_set', 'failure']
 
+  const rpeValues = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10]
+
   return (
-    <div
-      className={`grid grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 items-center py-2 px-2 rounded-lg transition-colors duration-600 ${
-        flash ? 'bg-success/20' : confirmed ? 'bg-surface-elevated/50' : ''
-      }`}
-    >
-      {/* Set number + type */}
-      <div className="text-center">
-        <button
-          onClick={() => {
-            if (confirmed) return
-            const idx = setTypes.indexOf(setType)
-            setSetType(setTypes[(idx + 1) % setTypes.length])
-          }}
-          className={`text-sm font-bold tap-target w-10 h-10 rounded-full flex items-center justify-center ${
-            setType === 'warmup'
-              ? 'text-warning bg-warning/10'
-              : setType === 'drop_set'
-              ? 'text-danger bg-danger/10'
-              : setType === 'failure'
-              ? 'text-danger bg-danger/20'
-              : 'text-text-secondary'
-          }`}
-          title={setType}
-          disabled={confirmed}
-        >
-          {setType === 'warmup' ? 'W' : setType === 'drop_set' ? 'D' : setType === 'failure' ? 'F' : setNumber}
-        </button>
-      </div>
-
-      {/* Previous */}
-      <div className="text-xs text-text-muted truncate text-center hidden sm:block">
-        {previous || '-'}
-      </div>
-
-      {/* Weight */}
-      <div className="flex items-center justify-center gap-1">
-        <button
-          onClick={() => setWeight(Math.max(0, weight - 2.5))}
-          disabled={confirmed}
-          className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
-                     text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
-        >
-          -
-        </button>
-        <input
-          type="number"
-          value={weight || ''}
-          onChange={(e) => setWeight(Number(e.target.value) || 0)}
-          placeholder="kg"
-          disabled={confirmed}
-          className="w-16 text-center text-xl font-mono font-bold bg-transparent text-text-primary
-                     border-b-2 border-text-muted focus:border-primary transition-colors
-                     [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
-                     [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <button
-          onClick={() => setWeight(weight + 2.5)}
-          disabled={confirmed}
-          className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
-                     text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
-        >
-          +
-        </button>
-      </div>
-
-      {/* Reps */}
-      <div className="flex items-center justify-center gap-1">
-        <button
-          onClick={() => setReps(Math.max(0, reps - 1))}
-          disabled={confirmed}
-          className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
-                     text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
-        >
-          -
-        </button>
-        <input
-          type="number"
-          value={reps || ''}
-          onChange={(e) => setReps(Number(e.target.value) || 0)}
-          placeholder="reps"
-          disabled={confirmed}
-          className="w-12 text-center text-xl font-mono font-bold bg-transparent text-text-primary
-                     border-b-2 border-text-muted focus:border-primary transition-colors
-                     [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
-                     [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <button
-          onClick={() => setReps(reps + 1)}
-          disabled={confirmed}
-          className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
-                     text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
-        >
-          +
-        </button>
-      </div>
-
-      {/* Confirm */}
-      <button
-        onClick={handleConfirm}
-        disabled={confirmed || (weight === 0 && reps === 0)}
-        className={`tap-target w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-90 ${
-          confirmed
-            ? 'bg-success text-white'
-            : weight > 0 || reps > 0
-            ? 'bg-primary text-white hover:bg-primary/80'
-            : 'bg-surface-elevated text-text-muted'
-        }`}
+    <div className={`rounded-lg transition-colors duration-600 ${
+      flash ? 'bg-success/20' : confirmed ? 'bg-surface-elevated/50' : ''
+    }`}>
+      <div
+        className="grid grid-cols-[40px_1fr_1fr_48px] sm:grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 items-center py-2 px-2"
       >
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M4 10l4 4 8-8" />
-        </svg>
-      </button>
+        {/* Set number + type */}
+        <div className="text-center">
+          <button
+            onClick={() => {
+              if (confirmed) return
+              const idx = setTypes.indexOf(setType)
+              setSetType(setTypes[(idx + 1) % setTypes.length])
+            }}
+            className={`text-sm font-bold tap-target w-10 h-10 rounded-full flex items-center justify-center ${
+              setType === 'warmup'
+                ? 'text-warning bg-warning/10'
+                : setType === 'drop_set'
+                ? 'text-danger bg-danger/10'
+                : setType === 'failure'
+                ? 'text-danger bg-danger/20'
+                : 'text-text-secondary'
+            }`}
+            title={setType}
+            disabled={confirmed}
+          >
+            {setType === 'warmup' ? 'W' : setType === 'drop_set' ? 'D' : setType === 'failure' ? 'F' : setNumber}
+          </button>
+        </div>
+
+        {/* Previous */}
+        <div className="text-xs text-text-muted truncate text-center hidden sm:block">
+          {previous || '-'}
+        </div>
+
+        {/* Weight */}
+        <div className="flex items-center justify-center gap-1">
+          <button
+            onClick={() => setWeight(Math.max(0, weight - 2.5))}
+            disabled={confirmed}
+            className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
+                       text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            value={weight || ''}
+            onChange={(e) => setWeight(Number(e.target.value) || 0)}
+            placeholder="kg"
+            disabled={confirmed}
+            className="w-16 text-center text-xl font-mono font-bold bg-transparent text-text-primary
+                       border-b-2 border-text-muted focus:border-primary transition-colors
+                       [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                       [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button
+            onClick={() => setWeight(weight + 2.5)}
+            disabled={confirmed}
+            className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
+                       text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
+          >
+            +
+          </button>
+        </div>
+
+        {/* Reps */}
+        <div className="flex items-center justify-center gap-1">
+          <button
+            onClick={() => setReps(Math.max(0, reps - 1))}
+            disabled={confirmed}
+            className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
+                       text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            value={reps || ''}
+            onChange={(e) => setReps(Number(e.target.value) || 0)}
+            placeholder="reps"
+            disabled={confirmed}
+            className="w-12 text-center text-xl font-mono font-bold bg-transparent text-text-primary
+                       border-b-2 border-text-muted focus:border-primary transition-colors
+                       [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                       [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button
+            onClick={() => setReps(reps + 1)}
+            disabled={confirmed}
+            className="tap-target w-8 h-8 flex items-center justify-center rounded-full bg-surface-elevated
+                       text-text-secondary hover:text-text-primary active:scale-90 transition-all text-sm"
+          >
+            +
+          </button>
+        </div>
+
+        {/* Confirm */}
+        <button
+          onClick={handleConfirm}
+          disabled={confirmed || (weight === 0 && reps === 0)}
+          className={`tap-target w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-90 ${
+            confirmed
+              ? 'bg-success text-white'
+              : weight > 0 || reps > 0
+              ? 'bg-primary text-white hover:bg-primary/80'
+              : 'bg-surface-elevated text-text-muted'
+          }`}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M4 10l4 4 8-8" />
+          </svg>
+        </button>
+      </div>
+
+      {/* RPE selector */}
+      {!confirmed && (
+        <div className="flex items-center gap-1 px-2 pb-2 pt-1 overflow-x-auto no-scrollbar">
+          <span className="text-xs text-text-muted mr-1 shrink-0">RPE</span>
+          {rpeValues.map((val) => (
+            <button
+              key={val}
+              onClick={() => setRpe(rpe === val ? undefined : val)}
+              className={`shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                rpe === val
+                  ? 'bg-primary text-white'
+                  : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {val}
+            </button>
+          ))}
+        </div>
+      )}
+      {confirmed && rpe != null && (
+        <div className="px-2 pb-2 pt-1">
+          <span className="text-xs text-text-muted">RPE {rpe}</span>
+        </div>
+      )}
     </div>
   )
 }
-
-// --- RPE Slider (optional inline) ---
 
 // --- PR Toast ---
 
@@ -294,7 +321,7 @@ function ExerciseSection({
       )}
 
       {/* Column headers */}
-      <div className="grid grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 px-2 mb-1">
+      <div className="grid grid-cols-[40px_1fr_1fr_48px] sm:grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 px-2 mb-1">
         <div className="text-xs text-text-muted text-center">Set</div>
         <div className="text-xs text-text-muted text-center hidden sm:block">Previous</div>
         <div className="text-xs text-text-muted text-center">kg</div>
@@ -310,7 +337,7 @@ function ExerciseSection({
           return (
             <div
               key={confirmedSet.id}
-              className="grid grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 items-center py-2 px-2 bg-surface-elevated/50 rounded-lg"
+              className="grid grid-cols-[40px_1fr_1fr_48px] sm:grid-cols-[40px_1fr_1fr_1fr_48px] gap-2 items-center py-2 px-2 bg-surface-elevated/50 rounded-lg"
             >
               <div className="text-sm font-bold text-center text-text-secondary">{i + 1}</div>
               <div className="text-xs text-text-muted text-center hidden sm:block">
@@ -383,6 +410,7 @@ export default function ActiveWorkout() {
 
   const [showPicker, setShowPicker] = useState(false)
   const [editingName, setEditingName] = useState(false)
+  const [showFinishConfirm, setShowFinishConfirm] = useState(false)
   const [prToast, setPrToast] = useState<{
     estimated1rm: number
     previous1rm?: number
@@ -444,6 +472,12 @@ export default function ActiveWorkout() {
   const seconds = elapsedSeconds % 60
   const elapsed = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
 
+  // Compute total volume across all confirmed sets
+  const totalVolume = exercises.reduce((sum, ex) => {
+    return sum + ex.sets.reduce((setSum, s) => setSum + (s.weight_kg ?? 0) * (s.reps ?? 0), 0)
+  }, 0)
+  const formattedVolume = totalVolume.toLocaleString('en-US', { maximumFractionDigits: 0 })
+
   if (!activeWorkoutId) return null
 
   return (
@@ -458,6 +492,36 @@ export default function ActiveWorkout() {
           previous1rm={prToast.previous1rm}
           onDismiss={() => setPrToast(null)}
         />
+      )}
+
+      {/* Finish Confirmation Dialog */}
+      {showFinishConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-surface rounded-card p-6 mx-4 max-w-sm w-full shadow-lg">
+            <h2 className="text-lg font-bold text-text-primary mb-2">Finish workout?</h2>
+            <p className="text-sm text-text-secondary mb-6">
+              This will save your workout and end the session.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFinishConfirm(false)}
+                className="flex-1 py-3 rounded-lg text-sm font-medium bg-surface-elevated text-text-secondary
+                           hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowFinishConfirm(false)
+                  handleFinish()
+                }}
+                className="flex-1 py-3 rounded-lg text-sm font-medium btn-primary"
+              >
+                Finish
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Exercise Picker */}
@@ -499,9 +563,14 @@ export default function ActiveWorkout() {
             <div className="text-text-secondary font-mono text-sm bg-surface-elevated px-2 py-1 rounded shrink-0">
               {elapsed}
             </div>
+            {totalVolume > 0 && (
+              <div className="text-text-secondary font-mono text-xs bg-surface-elevated px-2 py-1 rounded shrink-0">
+                {formattedVolume} kg
+              </div>
+            )}
           </div>
           <button
-            onClick={handleFinish}
+            onClick={() => setShowFinishConfirm(true)}
             className="btn-primary text-sm px-4 py-2 ml-3"
           >
             Finish

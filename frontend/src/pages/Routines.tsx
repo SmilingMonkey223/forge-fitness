@@ -17,7 +17,7 @@ interface RoutineEditorProps {
 interface EditableExercise {
   exercise_id: string
   exercise_name: string
-  sets: { set_type: string; target_reps?: number; target_weight_kg?: number }[]
+  sets: { set_type: string; target_reps?: number; target_weight_kg?: number; rest_seconds?: number }[]
 }
 
 function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
@@ -31,11 +31,13 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
         set_type: s.set_type,
         target_reps: s.target_reps,
         target_weight_kg: s.target_weight_kg,
+        rest_seconds: s.rest_seconds,
       })),
     })) || []
   )
   const [showPicker, setShowPicker] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editorMessage, setEditorMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
 
   const addExercise = (exercise: Exercise) => {
     setExercises([
@@ -93,8 +95,15 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
   }
 
   const handleSave = async () => {
-    if (!name.trim()) return alert('Routine name is required')
-    if (exercises.length === 0) return alert('Add at least one exercise')
+    setEditorMessage(null)
+    if (!name.trim()) {
+      setEditorMessage({ type: 'error', text: 'Routine name is required' })
+      return
+    }
+    if (exercises.length === 0) {
+      setEditorMessage({ type: 'error', text: 'Add at least one exercise' })
+      return
+    }
     setSaving(true)
     try {
       await onSave({
@@ -106,11 +115,12 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
             set_type: s.set_type,
             target_reps: s.target_reps,
             target_weight_kg: s.target_weight_kg,
+            rest_seconds: s.rest_seconds,
           })),
         })),
       })
     } catch {
-      alert('Failed to save routine')
+      setEditorMessage({ type: 'error', text: 'Failed to save routine' })
     } finally {
       setSaving(false)
     }
@@ -133,6 +143,18 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
       </div>
 
       <div className="max-w-2xl mx-auto w-full px-4 py-4 space-y-4">
+        {editorMessage && (
+          <div
+            className={`rounded-lg p-3 text-sm text-center ${
+              editorMessage.type === 'error'
+                ? 'bg-danger/10 border border-danger text-danger'
+                : 'bg-success/10 border border-success text-success'
+            }`}
+          >
+            {editorMessage.text}
+          </div>
+        )}
+
         <div>
           <label className="label">Routine Name</label>
           <input
@@ -167,15 +189,16 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
             </div>
 
             {/* Set headers */}
-            <div className="grid grid-cols-[40px_1fr_1fr_32px] gap-2 mb-1 px-1">
+            <div className="grid grid-cols-[40px_1fr_1fr_1fr_32px] gap-2 mb-1 px-1">
               <div className="text-xs text-text-muted text-center">Set</div>
               <div className="text-xs text-text-muted text-center">Reps</div>
               <div className="text-xs text-text-muted text-center">Weight (kg)</div>
+              <div className="text-xs text-text-muted text-center">Rest (s)</div>
               <div />
             </div>
 
             {ex.sets.map((set, setIdx) => (
-              <div key={setIdx} className="grid grid-cols-[40px_1fr_1fr_32px] gap-2 items-center py-1 px-1">
+              <div key={setIdx} className="grid grid-cols-[40px_1fr_1fr_1fr_32px] gap-2 items-center py-1 px-1">
                 <button
                   onClick={() => {
                     const types = ['working', 'warmup', 'drop_set']
@@ -201,6 +224,14 @@ function RoutineEditor({ initial, onSave, onCancel }: RoutineEditorProps) {
                   value={set.target_weight_kg || ''}
                   onChange={(e) => updateSet(exIdx, setIdx, 'target_weight_kg', Number(e.target.value) || 0)}
                   placeholder="-"
+                  className="w-full text-center bg-surface-elevated rounded py-2 text-sm font-mono text-text-primary
+                             [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <input
+                  type="number"
+                  value={set.rest_seconds || ''}
+                  onChange={(e) => updateSet(exIdx, setIdx, 'rest_seconds', Number(e.target.value) || 0)}
+                  placeholder="90"
                   className="w-full text-center bg-surface-elevated rounded py-2 text-sm font-mono text-text-primary
                              [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -237,6 +268,7 @@ export default function Routines() {
   const startWorkout = useWorkoutStore((s) => s.startWorkout)
   const [editing, setEditing] = useState<Routine | 'new' | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [pageMessage, setPageMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
 
   const { data: routines, isLoading, error } = useQuery<RoutineSummary[]>({
     queryKey: ['routines'],
@@ -265,26 +297,25 @@ export default function Routines() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this routine?')) return
     setDeleting(id)
+    setPageMessage(null)
     try {
       await api.deleteRoutine(id)
       queryClient.invalidateQueries({ queryKey: ['routines'] })
     } catch {
-      alert('Failed to delete routine')
+      setPageMessage({ type: 'error', text: 'Failed to delete routine' })
     } finally {
       setDeleting(null)
     }
   }
 
   const handleStartFromRoutine = async (routineId: string) => {
+    setPageMessage(null)
     try {
       const workout = await api.startWorkoutFromRoutine(routineId)
       startWorkout(workout.id, workout.name)
       navigate('/workout/active')
     } catch {
-      // Fallback: start empty workout
-      const workout = await api.createWorkout()
-      startWorkout(workout.id, workout.name)
-      navigate('/workout/active')
+      setPageMessage({ type: 'error', text: 'Failed to start workout from routine. Please try again.' })
     }
   }
 
@@ -310,6 +341,18 @@ export default function Routines() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+        {pageMessage && (
+          <div
+            className={`rounded-lg p-3 text-sm text-center ${
+              pageMessage.type === 'error'
+                ? 'bg-danger/10 border border-danger text-danger'
+                : 'bg-success/10 border border-success text-success'
+            }`}
+          >
+            {pageMessage.text}
+          </div>
+        )}
+
         {isLoading && (
           <div className="text-center py-12 text-text-muted">Loading routines...</div>
         )}

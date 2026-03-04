@@ -10,11 +10,13 @@ export function WeeklyCheckIn() {
   const [notes, setNotes] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setSuccessMessage('')
+    setErrorMessage('')
 
     try {
       await api.submitWeeklyCheckin({
@@ -32,7 +34,7 @@ export function WeeklyCheckIn() {
       }, 2000)
     } catch (error) {
       console.error('Failed to submit check-in:', error)
-      alert('Failed to submit check-in. Please try again.')
+      setErrorMessage('Failed to submit check-in. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -95,8 +97,14 @@ export function WeeklyCheckIn() {
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         {successMessage && (
-          <div className="bg-green-500 bg-opacity-10 border border-green-500 rounded-lg p-4 mb-6">
-            <p className="text-green-500">{successMessage}</p>
+          <div className="bg-success/10 border border-success rounded-lg p-4 mb-6">
+            <p className="text-success">{successMessage}</p>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="bg-danger/10 border border-danger rounded-lg p-4 mb-6">
+            <p className="text-danger">{errorMessage}</p>
           </div>
         )}
 
@@ -151,7 +159,7 @@ export function WeeklyCheckIn() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+              className="w-full px-6 py-3 bg-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
             >
               {isLoading ? 'Submitting...' : 'Submit Check-In'}
             </button>

@@ -22,6 +22,7 @@ interface PortionEditorProps {
 function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) {
   const [quantity, setQuantity] = useState(1)
   const [logging, setLogging] = useState(false)
+  const [logError, setLogError] = useState<string | null>(null)
 
   const cals = Math.round(food.calories * quantity)
   const protein = Math.round(food.protein_g * quantity * 10) / 10
@@ -30,6 +31,7 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
 
   const handleLog = async () => {
     setLogging(true)
+    setLogError(null)
     try {
       await api.logNutrition({
         meal_type: mealType,
@@ -44,7 +46,7 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
       })
       onLog()
     } catch {
-      alert('Failed to log food')
+      setLogError('Failed to log food. Please try again.')
     } finally {
       setLogging(false)
     }
@@ -52,6 +54,16 @@ function PortionEditor({ food, mealType, onLog, onCancel }: PortionEditorProps) 
 
   return (
     <div className="p-4 space-y-4">
+      {logError && (
+        <div className="bg-danger/10 text-danger border border-danger/30 rounded-card px-4 py-3 flex items-center justify-between">
+          <span className="text-sm">{logError}</span>
+          <button onClick={() => setLogError(null)} className="ml-2 text-danger hover:text-danger/70">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
+      )}
       <div>
         <h3 className="font-bold text-text-primary">{food.name}</h3>
         {food.brand && <div className="text-sm text-text-muted">{food.brand}</div>}
@@ -119,6 +131,19 @@ export default function FoodSearch({ open, mealType, onClose, onLogged }: FoodSe
   const [loading, setLoading] = useState(false)
   const [selectedFood, setSelectedFood] = useState<PortionEditorProps['food'] | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showCreateCustom, setShowCreateCustom] = useState(false)
+  const [customFormSaving, setCustomFormSaving] = useState(false)
+  const [customFormError, setCustomFormError] = useState<string | null>(null)
+  const [customForm, setCustomForm] = useState({
+    name: '',
+    brand: '',
+    serving_size: 100,
+    serving_unit: 'g',
+    calories: 0,
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+  })
 
   const fetchRecent = useCallback(async () => {
     try {
@@ -141,6 +166,9 @@ export default function FoodSearch({ open, mealType, onClose, onLogged }: FoodSe
       setSearch('')
       setSearchResults([])
       setSelectedFood(null)
+      setShowCreateCustom(false)
+      setCustomForm({ name: '', brand: '', serving_size: 100, serving_unit: 'g', calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
+      setCustomFormError(null)
     }
   }, [open, fetchRecent, fetchCustom])
 
@@ -203,6 +231,39 @@ export default function FoodSearch({ open, mealType, onClose, onLogged }: FoodSe
     setSelectedFood(null)
     onLogged()
     onClose()
+  }
+
+  const resetCustomForm = () => {
+    setCustomForm({ name: '', brand: '', serving_size: 100, serving_unit: 'g', calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
+    setCustomFormError(null)
+  }
+
+  const handleCreateCustomFood = async () => {
+    if (!customForm.name.trim()) {
+      setCustomFormError('Food name is required.')
+      return
+    }
+    setCustomFormSaving(true)
+    setCustomFormError(null)
+    try {
+      await api.createCustomFood({
+        name: customForm.name.trim(),
+        brand: customForm.brand.trim() || undefined,
+        serving_size: customForm.serving_size,
+        serving_unit: customForm.serving_unit,
+        calories: customForm.calories,
+        protein_g: customForm.protein_g,
+        carbs_g: customForm.carbs_g,
+        fat_g: customForm.fat_g,
+      })
+      resetCustomForm()
+      setShowCreateCustom(false)
+      fetchCustom()
+    } catch {
+      setCustomFormError('Failed to create custom food. Please try again.')
+    } finally {
+      setCustomFormSaving(false)
+    }
   }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -320,8 +381,145 @@ export default function FoodSearch({ open, mealType, onClose, onLogged }: FoodSe
           )}
 
           {tab === 'custom' && (
-            <div className="p-4 space-y-1">
-              {customFoods.length === 0 ? (
+            <div className="p-4 space-y-2">
+              {/* Create custom food toggle button */}
+              {!showCreateCustom && (
+                <button
+                  onClick={() => { resetCustomForm(); setShowCreateCustom(true) }}
+                  className="tap-target w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-primary/40 text-primary hover:bg-primary/5 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 3v12M3 9h12" />
+                  </svg>
+                  <span className="text-sm font-medium">Create Custom Food</span>
+                </button>
+              )}
+
+              {/* Inline create custom food form */}
+              {showCreateCustom && (
+                <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-bold text-text-primary text-sm">New Custom Food</h3>
+                    <button
+                      onClick={() => { setShowCreateCustom(false); resetCustomForm() }}
+                      className="text-text-muted hover:text-text-primary"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {customFormError && (
+                    <div className="bg-danger/10 text-danger border border-danger/30 rounded-card px-3 py-2 text-sm">
+                      {customFormError}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">Name *</label>
+                    <input
+                      type="text"
+                      value={customForm.name}
+                      onChange={(e) => setCustomForm((f) => ({ ...f, name: e.target.value }))}
+                      placeholder="e.g. Homemade Granola"
+                      className="input text-sm w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">Brand (optional)</label>
+                    <input
+                      type="text"
+                      value={customForm.brand}
+                      onChange={(e) => setCustomForm((f) => ({ ...f, brand: e.target.value }))}
+                      placeholder="e.g. My Kitchen"
+                      className="input text-sm w-full"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Serving Size</label>
+                      <input
+                        type="number"
+                        value={customForm.serving_size}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, serving_size: Number(e.target.value) || 0 }))}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Serving Unit</label>
+                      <input
+                        type="text"
+                        value={customForm.serving_unit}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, serving_unit: e.target.value }))}
+                        placeholder="g, ml, oz..."
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Calories</label>
+                      <input
+                        type="number"
+                        value={customForm.calories}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, calories: Number(e.target.value) || 0 }))}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Protein (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={customForm.protein_g}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, protein_g: Number(e.target.value) || 0 }))}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Carbs (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={customForm.carbs_g}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, carbs_g: Number(e.target.value) || 0 }))}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-text-muted block mb-1">Fat (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={customForm.fat_g}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, fat_g: Number(e.target.value) || 0 }))}
+                        className="input text-sm w-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => { setShowCreateCustom(false); resetCustomForm() }}
+                      className="btn-secondary flex-1 text-sm py-2"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleCreateCustomFood}
+                      disabled={customFormSaving}
+                      className="btn-primary flex-1 text-sm py-2"
+                    >
+                      {customFormSaving ? 'Creating...' : 'Create Food'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Existing custom foods list */}
+              {customFoods.length === 0 && !showCreateCustom ? (
                 <div className="text-center py-12 text-text-muted">No custom foods yet.</div>
               ) : (
                 customFoods.map((food) => (

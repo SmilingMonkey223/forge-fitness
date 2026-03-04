@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import type { WorkoutSummary, Workout } from '@/types'
 
 type Filter = 'all' | 'week' | 'month'
+const PAGE_SIZE = 20
+const FILTERED_LIMIT = 100
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return '-'
@@ -22,18 +24,31 @@ function formatVolume(kg: number): string {
 }
 
 export default function WorkoutHistory() {
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<Filter>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedWorkout, setExpandedWorkout] = useState<Workout | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
-  const PAGE_SIZE = 20
+  const [extraWorkouts, setExtraWorkouts] = useState<WorkoutSummary[]>([])
+  const [offset, setOffset] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const fetchLimit = filter === 'all' ? PAGE_SIZE : FILTERED_LIMIT
 
   const { data: workouts, isLoading, error } = useQuery<WorkoutSummary[]>({
     queryKey: ['workouts', filter],
-    queryFn: () => api.getWorkouts({ limit: PAGE_SIZE }),
+    queryFn: () => api.getWorkouts({ limit: fetchLimit }),
   })
 
-  const filteredWorkouts = (workouts || []).filter((w) => {
+  const allWorkouts = [
+    ...(workouts || []),
+    ...extraWorkouts.filter((ew) => !(workouts || []).some((w) => w.id === ew.id)),
+  ]
+
+  const filteredWorkouts = allWorkouts.filter((w) => {
     if (filter === 'all') return true
     const d = new Date(w.started_at)
     const now = new Date()
@@ -49,6 +64,45 @@ export default function WorkoutHistory() {
     }
     return true
   })
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true)
+    try {
+      const nextOffset = offset + PAGE_SIZE
+      const more = await api.getWorkouts({ limit: PAGE_SIZE, offset: nextOffset })
+      if (more.length < PAGE_SIZE) {
+        setHasMore(false)
+      }
+      setExtraWorkouts((prev) => [...prev, ...more])
+      setOffset(nextOffset)
+    } catch {
+      // silently fail, user can retry
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [offset])
+
+  const handleDelete = useCallback(async (id: string) => {
+    setDeletingId(id)
+    try {
+      await api.deleteWorkout(id)
+      // Optimistically remove from extra workouts
+      setExtraWorkouts((prev) => prev.filter((w) => w.id !== id))
+      // Invalidate the main query to remove from cached data
+      queryClient.setQueryData<WorkoutSummary[]>(['workouts', filter], (old) =>
+        old ? old.filter((w) => w.id !== id) : []
+      )
+      if (expandedId === id) {
+        setExpandedId(null)
+        setExpandedWorkout(null)
+      }
+      setConfirmDeleteId(null)
+    } catch {
+      // keep the item visible on failure
+    } finally {
+      setDeletingId(null)
+    }
+  }, [filter, expandedId, queryClient])
 
   const toggleExpand = useCallback(async (id: string) => {
     if (expandedId === id) {
@@ -138,40 +192,76 @@ export default function WorkoutHistory() {
         {/* Workout list */}
         {filteredWorkouts.map((w) => (
           <div key={w.id} className="card p-0 overflow-hidden">
-            <button
-              onClick={() => toggleExpand(w.id)}
-              className="tap-target w-full text-left px-4 py-4 hover:bg-surface-elevated/30 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="font-bold text-text-primary">{w.name || 'Workout'}</div>
-                  <div className="text-xs text-text-muted">{formatDate(w.started_at)}</div>
+            <div className="flex items-stretch">
+              <button
+                onClick={() => toggleExpand(w.id)}
+                className="tap-target flex-1 text-left px-4 py-4 hover:bg-surface-elevated/30 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="font-bold text-text-primary">{w.name || 'Workout'}</div>
+                    <div className="text-xs text-text-muted">{formatDate(w.started_at)}</div>
+                  </div>
+                  <div className={`text-xs px-2 py-0.5 rounded-full ${
+                    w.status === 'completed' ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'
+                  }`}>
+                    {w.status}
+                  </div>
                 </div>
-                <div className={`text-xs px-2 py-0.5 rounded-full ${
-                  w.status === 'completed' ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'
-                }`}>
-                  {w.status}
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div>
+                    <div className="text-xs text-text-muted">Duration</div>
+                    <div className="text-sm font-mono font-bold">{formatDuration(w.duration_seconds)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-text-muted">Volume</div>
+                    <div className="text-sm font-mono font-bold">{formatVolume(w.total_volume_kg)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-text-muted">Exercises</div>
+                    <div className="text-sm font-mono font-bold">{w.exercises_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-text-muted">Sets</div>
+                    <div className="text-sm font-mono font-bold">{w.sets_count}</div>
+                  </div>
+                </div>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConfirmDeleteId(confirmDeleteId === w.id ? null : w.id)
+                }}
+                className="flex items-center px-3 text-danger hover:bg-danger/10 transition-colors"
+                aria-label="Delete workout"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Delete confirmation */}
+            {confirmDeleteId === w.id && (
+              <div className="border-t border-surface-elevated px-4 py-3 flex items-center justify-between bg-danger/5">
+                <span className="text-sm text-danger font-medium">Delete this workout?</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="px-3 py-1 text-sm rounded-button bg-surface-elevated text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleDelete(w.id)}
+                    disabled={deletingId === w.id}
+                    className="px-3 py-1 text-sm rounded-button bg-danger text-white hover:bg-danger/80 transition-colors disabled:opacity-50"
+                  >
+                    {deletingId === w.id ? 'Deleting...' : 'Delete'}
+                  </button>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <div>
-                  <div className="text-xs text-text-muted">Duration</div>
-                  <div className="text-sm font-mono font-bold">{formatDuration(w.duration_seconds)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-text-muted">Volume</div>
-                  <div className="text-sm font-mono font-bold">{formatVolume(w.total_volume_kg)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-text-muted">Exercises</div>
-                  <div className="text-sm font-mono font-bold">{w.exercises_count}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-text-muted">Sets</div>
-                  <div className="text-sm font-mono font-bold">{w.sets_count}</div>
-                </div>
-              </div>
-            </button>
+            )}
 
             {/* Expanded detail */}
             {expandedId === w.id && (
@@ -181,11 +271,10 @@ export default function WorkoutHistory() {
                 ) : expandedWorkout ? (
                   <div className="space-y-3">
                     {Object.entries(exerciseSets).map(([, sets]) => {
-                      // We don't have exercise names in the set data, show exercise_id
                       return (
                         <div key={sets[0].exercise_id}>
                           <div className="text-sm font-medium text-primary mb-1">
-                            Exercise
+                            {sets[0].exercise_name || 'Unknown Exercise'}
                           </div>
                           <div className="space-y-0.5">
                             {sets.map((set) => (
@@ -216,6 +305,17 @@ export default function WorkoutHistory() {
             )}
           </div>
         ))}
+
+        {/* Load more button */}
+        {!isLoading && !error && filteredWorkouts.length > 0 && filter === 'all' && hasMore && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="w-full py-3 text-center text-sm font-medium text-primary bg-surface-elevated rounded-button hover:bg-surface-elevated/80 transition-colors disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        )}
       </div>
     </div>
   )

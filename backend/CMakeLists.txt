@@ -18,6 +18,7 @@ endif()
 # Dependencies
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
 
 # Try to find packages, fallback to FetchContent if not found
 include(FetchContent)
@@ -77,6 +78,7 @@ target_link_libraries(forge_lib PUBLIC
     Threads::Threads
     pq
     pqxx
+    CURL::libcurl
 )
 
 # Main executable

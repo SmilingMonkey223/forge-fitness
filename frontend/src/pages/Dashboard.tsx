@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import type { DashboardData } from '@/types'
 import { useWorkoutStore } from '@/stores/workoutStore'
@@ -27,8 +27,8 @@ function MacroRing({
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-24 h-24 sm:w-28 sm:h-28">
-        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 112 112">
-          <circle cx="56" cy="56" r="45" stroke="#1E1E2E" strokeWidth="8" fill="none" />
+        <svg className="w-full h-full transform -rotate-90 text-surface-elevated" viewBox="0 0 112 112">
+          <circle cx="56" cy="56" r="45" stroke="currentColor" strokeWidth="8" fill="none" />
           <circle
             cx="56" cy="56" r="45"
             stroke={color} strokeWidth="8" fill="none"
@@ -50,15 +50,36 @@ function MacroRing({
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const startWorkout = useWorkoutStore((s) => s.startWorkout)
   const activeWorkoutId = useWorkoutStore((s) => s.activeWorkoutId)
   const [startingWorkout, setStartingWorkout] = useState(false)
+  const [weightInput, setWeightInput] = useState('')
+  const [showWeightInput, setShowWeightInput] = useState(false)
+  const [weightSuccess, setWeightSuccess] = useState(false)
 
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: () => api.getDashboard(),
     retry: 2,
   })
+
+  const logWeightMutation = useMutation({
+    mutationFn: (weight_kg: number) => api.logWeight(weight_kg),
+    onSuccess: () => {
+      setWeightSuccess(true)
+      setWeightInput('')
+      setShowWeightInput(false)
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['weight'] })
+      setTimeout(() => setWeightSuccess(false), 3000)
+    },
+  })
+
+  const hasNutritionTargets =
+    data != null &&
+    data.today.nutrition.calories.target > 0 &&
+    data.today.nutrition.protein_g.target > 0
 
   const handleLogout = () => {
     api.logout()
@@ -153,37 +174,127 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </button>
         </div>
 
+        {/* Quick Weight Log */}
+        <div className="bg-surface rounded-card p-4">
+          {weightSuccess ? (
+            <div className="text-center text-success text-sm py-1">
+              Weight logged successfully
+            </div>
+          ) : showWeightInput ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                const val = parseFloat(weightInput)
+                if (!isNaN(val) && val > 0) {
+                  logWeightMutation.mutate(val)
+                }
+              }}
+              className="flex items-center gap-3"
+            >
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="Weight (kg)"
+                value={weightInput}
+                onChange={(e) => setWeightInput(e.target.value)}
+                autoFocus
+                className="flex-1 bg-surface-elevated rounded-button px-4 py-2 text-text-primary text-sm outline-none focus:ring-2 focus:ring-primary"
+              />
+              <button
+                type="submit"
+                disabled={logWeightMutation.isPending || !weightInput}
+                className="btn-primary text-sm px-4 py-2"
+              >
+                {logWeightMutation.isPending ? 'Saving...' : 'Log'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWeightInput(false)
+                  setWeightInput('')
+                }}
+                className="text-text-muted text-sm hover:text-text-secondary"
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowWeightInput(true)}
+              className="w-full flex items-center justify-center gap-2 text-text-primary text-sm hover:text-primary transition-colors"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Log Weight
+            </button>
+          )}
+          {logWeightMutation.isError && (
+            <div className="text-danger text-xs mt-2 text-center">
+              Failed to log weight. Please try again.
+            </div>
+          )}
+        </div>
+
         {/* Macro Rings */}
         <section>
           <h2 className="mb-4">Today's Nutrition</h2>
-          <div className="card">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-              <MacroRing
-                label="Calories"
-                consumed={data?.today.nutrition.calories.consumed || 0}
-                target={data?.today.nutrition.calories.target || 2400}
-                color="#6C5CE7"
-              />
-              <MacroRing
-                label="Protein"
-                consumed={data?.today.nutrition.protein_g.consumed || 0}
-                target={data?.today.nutrition.protein_g.target || 176}
-                color="#00D68F"
-              />
-              <MacroRing
-                label="Carbs"
-                consumed={data?.today.nutrition.carbs_g.consumed || 0}
-                target={data?.today.nutrition.carbs_g.target || 280}
-                color="#FFB800"
-              />
-              <MacroRing
-                label="Fat"
-                consumed={data?.today.nutrition.fat_g.consumed || 0}
-                target={data?.today.nutrition.fat_g.target || 80}
-                color="#FF5252"
-              />
+          {hasNutritionTargets ? (
+            <div className="card">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                <MacroRing
+                  label="Calories"
+                  consumed={data.today.nutrition.calories.consumed}
+                  target={data.today.nutrition.calories.target}
+                  color="#6C5CE7"
+                />
+                <MacroRing
+                  label="Protein"
+                  consumed={data.today.nutrition.protein_g.consumed}
+                  target={data.today.nutrition.protein_g.target}
+                  color="#00D68F"
+                />
+                <MacroRing
+                  label="Carbs"
+                  consumed={data.today.nutrition.carbs_g.consumed}
+                  target={data.today.nutrition.carbs_g.target}
+                  color="#FFB800"
+                />
+                <MacroRing
+                  label="Fat"
+                  consumed={data.today.nutrition.fat_g.consumed}
+                  target={data.today.nutrition.fat_g.target}
+                  color="#FF5252"
+                />
+              </div>
+              {(() => {
+                const remaining = Math.round(
+                  data.today.nutrition.calories.target - data.today.nutrition.calories.consumed
+                )
+                const isOver = remaining < 0
+                return (
+                  <div className={`text-center mt-4 text-sm ${isOver ? 'text-danger' : 'text-text-muted'}`}>
+                    {isOver
+                      ? `${Math.abs(remaining)} kcal over`
+                      : `${remaining} kcal left`}
+                  </div>
+                )
+              })()}
             </div>
-          </div>
+          ) : (
+            <div className="card text-center py-6">
+              <p className="text-text-muted mb-3">
+                Set up your profile to see personalized nutrition targets.
+              </p>
+              <button
+                onClick={() => navigate('/settings')}
+                className="text-primary text-sm font-medium hover:text-primary/80"
+              >
+                Complete Onboarding
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Today's Workout */}
@@ -255,13 +366,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                 </div>
               ))}
             </div>
-            {data?.week.current_streak ? (
-              <div className="text-center">
-                <div className="text-xl font-bold text-primary">
-                  {data.week.current_streak} day streak
-                </div>
+            <div className="text-center">
+              <div className="text-xl font-bold text-primary">
+                {data?.week.current_streak ?? 0} day streak
               </div>
-            ) : null}
+            </div>
           </div>
         </section>
       </div>

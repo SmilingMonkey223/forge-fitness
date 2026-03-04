@@ -336,7 +336,7 @@ CheckInRecommendation AnalyticsService::generate_nutrition_checkin(
     auto intake_result = txn.exec_params(
         "SELECT COALESCE(AVG(daily_total), 0) AS avg_daily_intake "
         "FROM ("
-        "  SELECT DATE(logged_at) AS d, SUM(calories) AS daily_total "
+        "  SELECT DATE(logged_at) AS d, SUM(calories * quantity) AS daily_total "
         "  FROM nutrition_log "
         "  WHERE user_id = $1 "
         "  AND deleted_at IS NULL "

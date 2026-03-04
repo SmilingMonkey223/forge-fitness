@@ -6,7 +6,9 @@ import type {
   PersonalRecord,
   ConsistencyPoint,
   Streaks,
-  CheckInRecommendation
+  CheckInRecommendation,
+  NutritionSummary,
+  UserProfile
 } from '@/types'
 
 type Tab = 'training' | 'nutrition'
@@ -26,6 +28,10 @@ export default function Analytics() {
   const [checkin, setCheckin] = useState<CheckInRecommendation | null>(null)
   const [checkinLoading, setCheckinLoading] = useState(false)
   const [checkinError, setCheckinError] = useState<string | null>(null)
+  const [nutritionSummaries, setNutritionSummaries] = useState<NutritionSummary[]>([])
+  const [acceptingTargets, setAcceptingTargets] = useState(false)
+  const [acceptSuccess, setAcceptSuccess] = useState(false)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
 
   useEffect(() => {
     loadData()
@@ -45,9 +51,20 @@ export default function Analytics() {
         setPrs(prRes.prs.slice(0, 10))
         setConsistency(consistencyRes.data)
         setStreaks(streaksRes)
+      } else {
+        const now = new Date()
+        const end = now.toISOString().split('T')[0]
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        const start = thirtyDaysAgo.toISOString().split('T')[0]
+        const [summaries, profileRes] = await Promise.all([
+          api.getNutritionSummaryRange(start, end),
+          api.getProfile()
+        ])
+        setNutritionSummaries(summaries)
+        setProfile(profileRes.profile)
       }
-    } catch (err) {
-      console.error('Failed to load analytics:', err)
+    } catch {
+      // Silently handle errors - data will remain in its default state
     } finally {
       setLoading(false)
     }
@@ -66,42 +83,89 @@ export default function Analytics() {
     }
   }
 
+  const acceptTargets = async () => {
+    if (!checkin) return
+    setAcceptingTargets(true)
+    setAcceptSuccess(false)
+    try {
+      const result = await api.updateProfile({
+        target_calories: Math.round(checkin.recommended_calorie_target),
+        target_protein_g: Math.round(checkin.protein_target_g),
+        target_carbs_g: Math.round(checkin.carbs_target_g),
+        target_fat_g: Math.round(checkin.fat_target_g),
+        tdee_calories: Math.round(checkin.adaptive_tdee_kcal),
+      })
+      setProfile(result.profile)
+      setAcceptSuccess(true)
+      setTimeout(() => setAcceptSuccess(false), 3000)
+    } catch {
+      // Silently handle errors
+    } finally {
+      setAcceptingTargets(false)
+    }
+  }
+
+  const computeCalorieAdherence = (): { percent: number; daysHit: number; totalDays: number } => {
+    const target = checkin?.recommended_calorie_target ?? profile?.target_calories
+    if (!target || nutritionSummaries.length === 0) return { percent: 0, daysHit: 0, totalDays: 0 }
+    const tolerance = target * 0.1
+    const daysHit = nutritionSummaries.filter(
+      s => s.total_calories >= target - tolerance && s.total_calories <= target + tolerance
+    ).length
+    const totalDays = nutritionSummaries.length
+    const percent = totalDays > 0 ? Math.round((daysHit / totalDays) * 100) : 0
+    return { percent, daysHit, totalDays }
+  }
+
+  const computeProteinHitRate = (): { percent: number; daysHit: number; totalDays: number } => {
+    const target = checkin?.protein_target_g ?? profile?.target_protein_g
+    if (!target || nutritionSummaries.length === 0) return { percent: 0, daysHit: 0, totalDays: 0 }
+    const threshold = target * 0.9
+    const daysHit = nutritionSummaries.filter(s => s.total_protein_g >= threshold).length
+    const totalDays = nutritionSummaries.length
+    const percent = totalDays > 0 ? Math.round((daysHit / totalDays) * 100) : 0
+    return { percent, daysHit, totalDays }
+  }
+
   const getMuscleColor = (index: number) => {
     const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500',
-      'bg-pink-500', 'bg-cyan-500', 'bg-yellow-500', 'bg-red-500'
+      'bg-primary', 'bg-success', 'bg-purple-500', 'bg-warning',
+      'bg-pink-500', 'bg-cyan-500', 'bg-celebration', 'bg-danger'
     ]
     return colors[index % colors.length]
   }
 
   const getConsistencyColor = (point: ConsistencyPoint) => {
-    if (!point.workout_completed) return 'bg-gray-100'
-    if (point.volume_kg > 5000) return 'bg-green-600'
-    if (point.volume_kg > 2500) return 'bg-green-400'
-    return 'bg-green-200'
+    if (!point.workout_completed) return 'bg-surface-elevated'
+    if (point.volume_kg > 5000) return 'bg-success'
+    if (point.volume_kg > 2500) return 'bg-success/60'
+    return 'bg-success/30'
   }
 
+  const calAdherence = computeCalorieAdherence()
+  const proteinRate = computeProteinHitRate()
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <div className="bg-white shadow-sm">
+      <div className="bg-surface shadow-card">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="text-gray-600">
+          <button onClick={() => navigate(-1)} className="text-text-secondary">
             ← Back
           </button>
-          <h1 className="text-lg font-semibold">Analytics</h1>
+          <h1 className="text-lg font-semibold text-text-primary">Analytics</h1>
           <div className="w-10" />
         </div>
 
         {/* Tabs */}
         <div className="max-w-lg mx-auto px-4">
-          <div className="flex border-b">
+          <div className="flex border-b border-border">
             <button
               onClick={() => setActiveTab('training')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'training'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted'
               }`}
             >
               Training
@@ -110,8 +174,8 @@ export default function Analytics() {
               onClick={() => setActiveTab('nutrition')}
               className={`flex-1 py-3 text-center font-medium border-b-2 transition-colors ${
                 activeTab === 'nutrition'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-muted'
               }`}
             >
               Nutrition
@@ -122,7 +186,7 @@ export default function Analytics() {
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-gray-400">
+          <div className="flex items-center justify-center h-48 text-text-muted">
             Loading...
           </div>
         ) : activeTab === 'training' ? (
@@ -130,36 +194,36 @@ export default function Analytics() {
             {/* Streak Cards */}
             {streaks && (
               <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl shadow-sm p-4 text-center">
-                  <div className="text-3xl font-bold text-orange-500">
+                <div className="bg-surface rounded-card shadow-card p-4 text-center">
+                  <div className="text-3xl font-bold text-warning">
                     {streaks.workout.current}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">Workout Streak</div>
-                  <div className="text-xs text-gray-400">Best: {streaks.workout.best}</div>
+                  <div className="text-xs text-text-secondary mt-1">Workout Streak</div>
+                  <div className="text-xs text-text-muted">Best: {streaks.workout.best}</div>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm p-4 text-center">
-                  <div className="text-3xl font-bold text-green-500">
+                <div className="bg-surface rounded-card shadow-card p-4 text-center">
+                  <div className="text-3xl font-bold text-success">
                     {streaks.logging.current}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">Logging Streak</div>
-                  <div className="text-xs text-gray-400">Best: {streaks.logging.best}</div>
+                  <div className="text-xs text-text-secondary mt-1">Logging Streak</div>
+                  <div className="text-xs text-text-muted">Best: {streaks.logging.best}</div>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm p-4 text-center">
-                  <div className="text-3xl font-bold text-blue-500">
+                <div className="bg-surface rounded-card shadow-card p-4 text-center">
+                  <div className="text-3xl font-bold text-primary">
                     {streaks.weight.current}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">Weight Streak</div>
-                  <div className="text-xs text-gray-400">Best: {streaks.weight.best}</div>
+                  <div className="text-xs text-text-secondary mt-1">Weight Streak</div>
+                  <div className="text-xs text-text-muted">Best: {streaks.weight.best}</div>
                 </div>
               </div>
             )}
 
             {/* Consistency Heatmap */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Training Consistency</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Training Consistency</h2>
               <div className="grid grid-cols-7 gap-1">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-                  <div key={i} className="text-center text-xs text-gray-400 mb-1">
+                  <div key={i} className="text-center text-xs text-text-muted mb-1">
                     {day}
                   </div>
                 ))}
@@ -171,27 +235,27 @@ export default function Analytics() {
                   />
                 ))}
               </div>
-              <div className="mt-4 flex justify-end gap-2 text-xs text-gray-500">
+              <div className="mt-4 flex justify-end gap-2 text-xs text-text-secondary">
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-gray-100" /> Rest
+                  <div className="w-3 h-3 rounded-sm bg-surface-elevated" /> Rest
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-green-200" /> Light
+                  <div className="w-3 h-3 rounded-sm bg-success/30" /> Light
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-green-400" /> Medium
+                  <div className="w-3 h-3 rounded-sm bg-success/60" /> Medium
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-green-600" /> Heavy
+                  <div className="w-3 h-3 rounded-sm bg-success" /> Heavy
                 </div>
               </div>
             </div>
 
             {/* Muscle Distribution */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Muscle Distribution (4 weeks)</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Muscle Distribution (4 weeks)</h2>
               {muscleDistribution.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">
+                <p className="text-text-muted text-center py-8">
                   Complete some workouts to see your muscle distribution
                 </p>
               ) : (
@@ -227,8 +291,8 @@ export default function Analytics() {
                       }, { paths: [] as JSX.Element[], offset: 0 }).paths}
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center">
-                        <span className="text-lg font-bold text-gray-700">
+                      <div className="w-24 h-24 bg-surface rounded-full flex items-center justify-center">
+                        <span className="text-lg font-bold text-text-secondary">
                           {muscleDistribution.reduce((sum, g) => sum + g.total_sets, 0)} sets
                         </span>
                       </div>
@@ -240,10 +304,10 @@ export default function Analytics() {
                     {muscleDistribution.map((group, i) => (
                       <div key={group.muscle_group} className="flex items-center gap-2">
                         <div className={`w-3 h-3 rounded-full ${getMuscleColor(i)}`} />
-                        <span className="text-sm text-gray-600 flex-1 capitalize">
+                        <span className="text-sm text-text-secondary flex-1 capitalize">
                           {group.muscle_group.replace('_', ' ')}
                         </span>
-                        <span className="text-sm font-medium">{group.total_sets}</span>
+                        <span className="text-sm font-medium text-text-primary">{group.total_sets}</span>
                       </div>
                     ))}
                   </div>
@@ -252,28 +316,28 @@ export default function Analytics() {
             </div>
 
             {/* Recent PRs */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Recent PRs</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Recent PRs</h2>
               {prs.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">
+                <p className="text-text-muted text-center py-8">
                   No personal records yet. Keep training!
                 </p>
               ) : (
                 <div className="space-y-3">
                   {prs.map(pr => (
-                    <div key={pr.id} className="flex items-center gap-3 py-2 border-b last:border-b-0">
+                    <div key={pr.id} className="flex items-center gap-3 py-2 border-b border-border last:border-b-0">
                       <div className="text-2xl">🏆</div>
                       <div className="flex-1">
-                        <div className="font-medium">{pr.exercise_name}</div>
-                        <div className="text-sm text-gray-500">
+                        <div className="font-medium text-text-primary">{pr.exercise_name}</div>
+                        <div className="text-sm text-text-secondary">
                           {pr.weight_kg}kg × {pr.reps} reps
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium text-blue-600">
+                        <div className="font-medium text-primary">
                           {pr.pr_type === '1rm' ? `${pr.value.toFixed(1)}kg 1RM` : pr.value}
                         </div>
-                        <div className="text-xs text-gray-400">{pr.date}</div>
+                        <div className="text-xs text-text-muted">{pr.date}</div>
                       </div>
                     </div>
                   ))}
@@ -284,90 +348,100 @@ export default function Analytics() {
         ) : (
           <>
             {/* Weekly Check-in */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Weekly Nutrition Check-in</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Weekly Nutrition Check-in</h2>
 
               {checkinError && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-warning text-sm">
                   {checkinError}
                 </div>
               )}
 
               {checkin ? (
                 <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <p className="text-blue-800">{checkin.summary}</p>
+                  <div className="p-4 bg-primary/10 rounded-lg">
+                    <p className="text-primary">{checkin.summary}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm text-gray-500">Adaptive TDEE</div>
-                      <div className="text-2xl font-bold">{Math.round(checkin.adaptive_tdee_kcal)}</div>
+                      <div className="text-sm text-text-secondary">Adaptive TDEE</div>
+                      <div className="text-2xl font-bold text-text-primary">{Math.round(checkin.adaptive_tdee_kcal)}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-gray-500">Formula TDEE</div>
-                      <div className="text-2xl font-bold text-gray-400">
+                      <div className="text-sm text-text-secondary">Formula TDEE</div>
+                      <div className="text-2xl font-bold text-text-muted">
                         {Math.round(checkin.formula_tdee_kcal)}
                       </div>
                     </div>
                   </div>
 
-                  <div className="border-t pt-4">
-                    <div className="text-sm text-gray-500 mb-2">Recommended Targets</div>
+                  <div className="border-t border-border pt-4">
+                    <div className="text-sm text-text-secondary mb-2">Recommended Targets</div>
                     <div className="grid grid-cols-4 gap-2 text-center">
                       <div>
-                        <div className="text-xl font-bold">
+                        <div className="text-xl font-bold text-text-primary">
                           {Math.round(checkin.recommended_calorie_target)}
                         </div>
-                        <div className="text-xs text-gray-500">kcal</div>
+                        <div className="text-xs text-text-secondary">kcal</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-blue-600">
+                        <div className="text-xl font-bold text-primary">
                           {Math.round(checkin.protein_target_g)}
                         </div>
-                        <div className="text-xs text-gray-500">protein</div>
+                        <div className="text-xs text-text-secondary">protein</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-amber-600">
+                        <div className="text-xl font-bold text-warning">
                           {Math.round(checkin.carbs_target_g)}
                         </div>
-                        <div className="text-xs text-gray-500">carbs</div>
+                        <div className="text-xs text-text-secondary">carbs</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-red-600">
+                        <div className="text-xl font-bold text-danger">
                           {Math.round(checkin.fat_target_g)}
                         </div>
-                        <div className="text-xs text-gray-500">fat</div>
+                        <div className="text-xs text-text-secondary">fat</div>
                       </div>
                     </div>
                   </div>
 
                   {checkin.calorie_adjustment !== 0 && (
                     <div className={`p-3 rounded-lg ${
-                      checkin.calorie_adjustment > 0 ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                      checkin.calorie_adjustment > 0 ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
                     }`}>
                       Adjustment: {checkin.calorie_adjustment > 0 ? '+' : ''}{checkin.calorie_adjustment} kcal/day
                     </div>
                   )}
 
+                  {acceptSuccess && (
+                    <div className="p-3 bg-success/10 border border-success/30 rounded-lg text-success text-sm">
+                      Targets updated successfully!
+                    </div>
+                  )}
+
                   <div className="flex gap-3">
-                    <button className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium">
-                      Accept Targets
+                    <button
+                      onClick={acceptTargets}
+                      disabled={acceptingTargets || acceptSuccess}
+                      className="flex-1 py-3 bg-success text-background rounded-lg font-medium disabled:opacity-50"
+                    >
+                      {acceptingTargets ? 'Saving...' : acceptSuccess ? 'Saved' : 'Accept Targets'}
                     </button>
-                    <button className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium">
+                    <button className="flex-1 py-3 bg-surface-elevated text-text-secondary rounded-lg font-medium">
                       Skip This Week
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">
+                  <p className="text-text-secondary mb-4">
                     Get personalized calorie and macro recommendations based on your actual progress.
                   </p>
                   <button
                     onClick={generateCheckin}
                     disabled={checkinLoading}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50"
+                    className="px-6 py-3 bg-primary text-text-primary rounded-lg font-medium disabled:opacity-50"
                   >
                     {checkinLoading ? 'Calculating...' : 'Generate Check-in'}
                   </button>
@@ -376,8 +450,8 @@ export default function Analytics() {
             </div>
 
             {/* Calorie Adherence */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Calorie Adherence</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Calorie Adherence</h2>
               <div className="flex items-center justify-center">
                 <div className="relative w-32 h-32">
                   <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
@@ -386,7 +460,7 @@ export default function Analytics() {
                       cy="50"
                       r="40"
                       fill="none"
-                      stroke="#e5e7eb"
+                      stroke="#2A2A3E"
                       strokeWidth="12"
                     />
                     <circle
@@ -394,25 +468,27 @@ export default function Analytics() {
                       cy="50"
                       r="40"
                       fill="none"
-                      stroke="#22c55e"
+                      stroke="#00D68F"
                       strokeWidth="12"
-                      strokeDasharray={`${78 * 2.51} ${100 * 2.51}`}
+                      strokeDasharray={`${calAdherence.percent * 2.51} ${100 * 2.51}`}
                       strokeLinecap="round"
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold">78%</span>
+                    <span className="text-2xl font-bold text-text-primary">{calAdherence.percent}%</span>
                   </div>
                 </div>
               </div>
-              <p className="text-center text-gray-600 mt-4">
-                You hit your calorie target <strong>78%</strong> of days this month
+              <p className="text-center text-text-secondary mt-4">
+                {nutritionSummaries.length > 0
+                  ? <>You hit your calorie target <strong>{calAdherence.percent}%</strong> of days this month ({calAdherence.daysHit} of {calAdherence.totalDays})</>
+                  : 'Log your nutrition to see calorie adherence data'}
               </p>
             </div>
 
             {/* Protein Hit Rate */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Protein Target</h2>
+            <div className="bg-surface rounded-card shadow-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Protein Target</h2>
               <div className="flex items-center justify-center">
                 <div className="relative w-32 h-32">
                   <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
@@ -421,7 +497,7 @@ export default function Analytics() {
                       cy="50"
                       r="40"
                       fill="none"
-                      stroke="#e5e7eb"
+                      stroke="#2A2A3E"
                       strokeWidth="12"
                     />
                     <circle
@@ -429,19 +505,21 @@ export default function Analytics() {
                       cy="50"
                       r="40"
                       fill="none"
-                      stroke="#3b82f6"
+                      stroke="#6C5CE7"
                       strokeWidth="12"
-                      strokeDasharray={`${85 * 2.51} ${100 * 2.51}`}
+                      strokeDasharray={`${proteinRate.percent * 2.51} ${100 * 2.51}`}
                       strokeLinecap="round"
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold">85%</span>
+                    <span className="text-2xl font-bold text-text-primary">{proteinRate.percent}%</span>
                   </div>
                 </div>
               </div>
-              <p className="text-center text-gray-600 mt-4">
-                You hit ≥1.6g/kg protein on <strong>22 of 26</strong> days this month
+              <p className="text-center text-text-secondary mt-4">
+                {nutritionSummaries.length > 0
+                  ? <>You hit your protein target on <strong>{proteinRate.daysHit} of {proteinRate.totalDays}</strong> days this month</>
+                  : 'Log your nutrition to see protein adherence data'}
               </p>
             </div>
           </>

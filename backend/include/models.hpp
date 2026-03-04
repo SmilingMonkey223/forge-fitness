@@ -105,6 +105,10 @@ struct ExerciseSet {
     std::optional<int> rest_seconds;
     bool is_pr;
     std::optional<std::string> notes;
+    // Joined from exercises table
+    std::optional<std::string> exercise_name;
+    std::optional<std::string> muscle_group;
+    std::optional<std::string> equipment;
 
     json to_json() const {
         json j = {
@@ -123,6 +127,9 @@ struct ExerciseSet {
         if (rpe) j["rpe"] = *rpe;
         if (rest_seconds) j["rest_seconds"] = *rest_seconds;
         if (notes) j["notes"] = *notes;
+        if (exercise_name) j["exercise_name"] = *exercise_name;
+        if (muscle_group) j["muscle_group"] = *muscle_group;
+        if (equipment) j["equipment"] = *equipment;
 
         return j;
     }

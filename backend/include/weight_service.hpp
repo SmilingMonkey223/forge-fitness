@@ -68,6 +68,9 @@ public:
     // Calculate trend from weight history
     WeightTrend get_weight_trend(const std::string& user_id);
 
+    // Delete a weight entry
+    bool delete_weight(const std::string& weight_id, const std::string& user_id);
+
 private:
     Database& db_;
 };

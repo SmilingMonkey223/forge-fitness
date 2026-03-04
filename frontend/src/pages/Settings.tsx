@@ -33,14 +33,21 @@ export default function Settings({ onLogout }: SettingsProps) {
   const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [form, setForm] = useState<Partial<UserProfile>>({})
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [form, setForm] = useState<Partial<UserProfile> & { goal_weight_kg?: number }>({})
+  const [macroOverrides, setMacroOverrides] = useState<{
+    target_calories?: number
+    target_protein_g?: number
+    target_carbs_g?: number
+    target_fat_g?: number
+  }>({})
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<{ profile: UserProfile }>({
     queryKey: ['profile'],
     queryFn: () => api.getProfile(),
   })
 
-  const profile = (data as { profile?: UserProfile } | undefined)?.profile ?? data as UserProfile | undefined
+  const profile = data?.profile
 
   useEffect(() => {
     if (profile) {
@@ -52,6 +59,13 @@ export default function Settings({ onLogout }: SettingsProps) {
         activity_level: profile.activity_level,
         fitness_goal: profile.fitness_goal,
         unit_preference: profile.unit_preference,
+        goal_weight_kg: (profile as unknown as Record<string, unknown>).goal_weight_kg as number | undefined,
+      })
+      setMacroOverrides({
+        target_calories: profile.target_calories,
+        target_protein_g: profile.target_protein_g,
+        target_carbs_g: profile.target_carbs_g,
+        target_fat_g: profile.target_fat_g,
       })
     }
   }, [profile])
@@ -59,14 +73,19 @@ export default function Settings({ onLogout }: SettingsProps) {
   const handleSave = async () => {
     setSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
-      await api.updateProfile(form)
+      const payload = {
+        ...form,
+        ...macroOverrides,
+      }
+      await api.updateProfile(payload)
       queryClient.invalidateQueries({ queryKey: ['profile'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch {
-      alert('Failed to save profile')
+      setSaveError('Failed to save profile. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -115,6 +134,13 @@ export default function Settings({ onLogout }: SettingsProps) {
           </div>
         )}
 
+        {/* Error toast */}
+        {saveError && (
+          <div className="bg-danger/10 border border-danger rounded-lg p-3 text-center text-danger text-sm">
+            {saveError}
+          </div>
+        )}
+
         {/* Body Stats */}
         <section className="card">
           <h3 className="text-primary mb-4">Body Stats</h3>
@@ -157,6 +183,16 @@ export default function Settings({ onLogout }: SettingsProps) {
                 <option value="female">Female</option>
                 <option value="other">Other</option>
               </select>
+            </div>
+            <div>
+              <label className="label">Goal Weight (kg)</label>
+              <input
+                type="number"
+                value={form.goal_weight_kg || ''}
+                onChange={(e) => setForm({ ...form, goal_weight_kg: Number(e.target.value) || undefined })}
+                placeholder="Target weight"
+                className="input text-center font-mono"
+              />
             </div>
           </div>
         </section>
@@ -219,28 +255,58 @@ export default function Settings({ onLogout }: SettingsProps) {
             <div className="text-xs text-text-muted">Estimated TDEE</div>
             <div className="text-2xl font-bold font-mono">{tdee} kcal</div>
           </div>
-          {profile?.target_calories && (
-            <div className="grid grid-cols-4 gap-3 text-center bg-surface-elevated rounded-lg p-3">
-              <div>
-                <div className="text-xs text-text-muted">Calories</div>
-                <div className="font-bold font-mono text-primary">{profile.target_calories}</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-muted">Protein</div>
-                <div className="font-bold font-mono text-success">{profile.target_protein_g}g</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-muted">Carbs</div>
-                <div className="font-bold font-mono text-warning">{profile.target_carbs_g}g</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-muted">Fat</div>
-                <div className="font-bold font-mono text-danger">{profile.target_fat_g}g</div>
-              </div>
+          <div className="text-xs text-text-muted text-center mb-3">
+            Override the auto-calculated values below, or leave blank to use defaults.
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Calories (kcal)</label>
+              <input
+                type="number"
+                value={macroOverrides.target_calories || ''}
+                onChange={(e) =>
+                  setMacroOverrides({ ...macroOverrides, target_calories: Number(e.target.value) || undefined })
+                }
+                placeholder={String(tdee || '')}
+                className="input text-center font-mono"
+              />
             </div>
-          )}
-          <div className="text-xs text-text-muted text-center mt-2">
-            Targets are recalculated when you save changes
+            <div>
+              <label className="label">Protein (g)</label>
+              <input
+                type="number"
+                value={macroOverrides.target_protein_g || ''}
+                onChange={(e) =>
+                  setMacroOverrides({ ...macroOverrides, target_protein_g: Number(e.target.value) || undefined })
+                }
+                placeholder="Auto"
+                className="input text-center font-mono"
+              />
+            </div>
+            <div>
+              <label className="label">Carbs (g)</label>
+              <input
+                type="number"
+                value={macroOverrides.target_carbs_g || ''}
+                onChange={(e) =>
+                  setMacroOverrides({ ...macroOverrides, target_carbs_g: Number(e.target.value) || undefined })
+                }
+                placeholder="Auto"
+                className="input text-center font-mono"
+              />
+            </div>
+            <div>
+              <label className="label">Fat (g)</label>
+              <input
+                type="number"
+                value={macroOverrides.target_fat_g || ''}
+                onChange={(e) =>
+                  setMacroOverrides({ ...macroOverrides, target_fat_g: Number(e.target.value) || undefined })
+                }
+                placeholder="Auto"
+                className="input text-center font-mono"
+              />
+            </div>
           </div>
         </section>
 

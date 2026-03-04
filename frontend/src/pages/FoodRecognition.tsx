@@ -84,12 +84,21 @@ export default function FoodRecognition() {
       const { task_id } = await api.recognizeFood(capturedImage)
       setStatus('processing')
 
-      // Poll for result
-      const pollResult = async (): Promise<FoodRecognitionResult> => {
+      // Poll for result (max 30 attempts = 60 seconds)
+      const MAX_POLL_ATTEMPTS = 30
+      const POLL_INTERVAL_MS = 2000
+      const pollResult = async (attempt: number = 0): Promise<FoodRecognitionResult> => {
+        if (attempt >= MAX_POLL_ATTEMPTS) {
+          return {
+            task_id,
+            status: 'failed' as const,
+            error: 'Recognition timed out after 60 seconds. Please try again with a clearer photo.',
+          } as FoodRecognitionResult
+        }
         const result = await api.getFoodRecognitionResult(task_id)
         if (result.status === 'pending' || result.status === 'processing') {
-          await new Promise(resolve => setTimeout(resolve, 500))
-          return pollResult()
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+          return pollResult(attempt + 1)
         }
         return result
       }
@@ -158,10 +167,10 @@ export default function FoodRecognition() {
   }
 
   const getConfidenceColor = (confidence?: number) => {
-    if (!confidence) return 'bg-gray-200'
-    if (confidence >= 0.8) return 'bg-green-500'
+    if (!confidence) return 'bg-surface-elevated'
+    if (confidence >= 0.8) return 'bg-success'
     if (confidence >= 0.6) return 'bg-yellow-500'
-    return 'bg-red-500'
+    return 'bg-danger'
   }
 
   const totals = editedItems.reduce((acc, item) => ({
@@ -172,11 +181,11 @@ export default function FoodRecognition() {
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <div className="bg-white shadow-sm">
+      <div className="bg-surface">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="text-gray-600">
+          <button onClick={() => navigate(-1)} className="text-text-secondary">
             ← Back
           </button>
           <h1 className="text-lg font-semibold">AI Food Recognition</h1>
@@ -187,7 +196,7 @@ export default function FoodRecognition() {
       <div className="max-w-lg mx-auto px-4 py-6">
         {/* Error Display */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-4 p-4 bg-danger/10 border border-danger/30 rounded-lg text-danger">
             {error}
           </div>
         )}
@@ -195,32 +204,32 @@ export default function FoodRecognition() {
         {/* Camera/Upload Section */}
         {status === 'idle' && !previewUrl && (
           <div className="space-y-4">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium mb-4">Take a Photo of Your Meal</h2>
-              <p className="text-gray-600 text-sm mb-6">
+            <div className="bg-surface rounded-card p-6">
+              <h2 className="text-lg font-medium text-text-primary mb-4">Take a Photo of Your Meal</h2>
+              <p className="text-text-secondary text-sm mb-6">
                 Point your camera at your food and we'll identify the items and estimate calories and macros.
               </p>
 
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={startCamera}
-                  className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                  className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-border rounded-card hover:border-primary hover:bg-primary/10 transition-colors"
                 >
-                  <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10 text-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-sm font-medium text-gray-700">Take Photo</span>
+                  <span className="text-sm font-medium text-text-secondary">Take Photo</span>
                 </button>
 
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                  className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-border rounded-card hover:border-primary hover:bg-primary/10 transition-colors"
                 >
-                  <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10 text-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-sm font-medium text-gray-700">Choose Photo</span>
+                  <span className="text-sm font-medium text-text-secondary">Choose Photo</span>
                 </button>
               </div>
 
@@ -237,7 +246,7 @@ export default function FoodRecognition() {
 
         {/* Camera View */}
         {showCamera && (
-          <div className="relative bg-black rounded-xl overflow-hidden">
+          <div className="relative bg-black rounded-card overflow-hidden">
             <video
               ref={videoRef}
               autoPlay
@@ -247,15 +256,15 @@ export default function FoodRecognition() {
             <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
               <button
                 onClick={stopCamera}
-                className="p-3 bg-gray-800/80 text-white rounded-full"
+                className="p-3 bg-surface/80 text-text-primary rounded-full"
               >
                 Cancel
               </button>
               <button
                 onClick={capturePhoto}
-                className="p-4 bg-white rounded-full"
+                className="p-4 bg-surface rounded-full"
               >
-                <div className="w-12 h-12 rounded-full border-4 border-gray-800" />
+                <div className="w-12 h-12 rounded-full border-4 border-text-primary" />
               </button>
             </div>
           </div>
@@ -268,7 +277,7 @@ export default function FoodRecognition() {
               <img
                 src={previewUrl}
                 alt="Food preview"
-                className="w-full rounded-xl"
+                className="w-full rounded-card"
               />
               <button
                 onClick={() => {
@@ -284,7 +293,7 @@ export default function FoodRecognition() {
             <button
               onClick={analyzeFood}
               disabled={status === 'uploading' || status === 'processing'}
-              className="w-full py-4 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-50"
+              className="w-full py-4 bg-primary text-white rounded-card font-medium disabled:opacity-50"
             >
               {status === 'uploading' && 'Uploading...'}
               {status === 'processing' && 'Analyzing your meal...'}
@@ -298,17 +307,17 @@ export default function FoodRecognition() {
           <div className="space-y-4">
             {/* Preview Image */}
             {previewUrl && (
-              <img src={previewUrl} alt="Food" className="w-full rounded-xl" />
+              <img src={previewUrl} alt="Food" className="w-full rounded-card" />
             )}
 
             {/* Confidence Indicator */}
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-600">AI Confidence:</span>
+              <span className="text-text-secondary">AI Confidence:</span>
               <div className={`w-3 h-3 rounded-full ${getConfidenceColor(result.confidence)}`} />
               <span className="font-medium">
                 {result.confidence ? `${Math.round(result.confidence * 100)}%` : 'Unknown'}
               </span>
-              <span className="text-gray-400">• Tier {result.tier}</span>
+              <span className="text-text-muted">• Tier {result.tier}</span>
             </div>
 
             {/* Meal Type Selector */}
@@ -319,8 +328,8 @@ export default function FoodRecognition() {
                   onClick={() => setMealType(type)}
                   className={`px-4 py-2 rounded-full text-sm font-medium capitalize ${
                     mealType === type
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-elevated text-text-secondary'
                   }`}
                 >
                   {type}
@@ -331,17 +340,17 @@ export default function FoodRecognition() {
             {/* Editable Food Items */}
             <div className="space-y-3">
               {editedItems.map((item, index) => (
-                <div key={index} className="bg-white rounded-xl shadow-sm p-4">
+                <div key={index} className="bg-surface rounded-card p-4">
                   <div className="flex justify-between items-start mb-3">
                     <input
                       type="text"
                       value={item.name}
                       onChange={e => updateItem(index, 'name', e.target.value)}
-                      className="text-lg font-medium bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none"
+                      className="text-lg font-medium text-text-primary bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none"
                     />
                     <button
                       onClick={() => removeItem(index)}
-                      className="text-red-500 hover:text-red-700"
+                      className="text-danger hover:text-danger/80"
                     >
                       Remove
                     </button>
@@ -349,51 +358,51 @@ export default function FoodRecognition() {
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <label className="text-gray-500">Portion (g)</label>
+                      <label className="text-text-muted">Portion (g)</label>
                       <input
                         type="number"
                         value={item.portion_grams}
                         onChange={e => updateItem(index, 'portion_grams', Number(e.target.value))}
-                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                        className="w-full mt-1 px-3 py-2 border border-border bg-surface-elevated text-text-primary rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="text-gray-500">Calories</label>
+                      <label className="text-text-muted">Calories</label>
                       <input
                         type="number"
                         value={item.calories}
                         onChange={e => updateItem(index, 'calories', Number(e.target.value))}
-                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                        className="w-full mt-1 px-3 py-2 border border-border bg-surface-elevated text-text-primary rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="text-gray-500">Protein (g)</label>
+                      <label className="text-text-muted">Protein (g)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={item.protein_g}
                         onChange={e => updateItem(index, 'protein_g', Number(e.target.value))}
-                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                        className="w-full mt-1 px-3 py-2 border border-border bg-surface-elevated text-text-primary rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="text-gray-500">Carbs (g)</label>
+                      <label className="text-text-muted">Carbs (g)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={item.carbs_g}
                         onChange={e => updateItem(index, 'carbs_g', Number(e.target.value))}
-                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                        className="w-full mt-1 px-3 py-2 border border-border bg-surface-elevated text-text-primary rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="text-gray-500">Fat (g)</label>
+                      <label className="text-text-muted">Fat (g)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={item.fat_g}
                         onChange={e => updateItem(index, 'fat_g', Number(e.target.value))}
-                        className="w-full mt-1 px-3 py-2 border rounded-lg"
+                        className="w-full mt-1 px-3 py-2 border border-border bg-surface-elevated text-text-primary rounded-lg"
                       />
                     </div>
                   </div>
@@ -402,31 +411,31 @@ export default function FoodRecognition() {
 
               <button
                 onClick={addItem}
-                className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-500 hover:text-blue-600"
+                className="w-full py-3 border-2 border-dashed border-border rounded-card text-text-secondary hover:border-primary hover:text-primary"
               >
                 + Add Item
               </button>
             </div>
 
             {/* Totals */}
-            <div className="bg-blue-50 rounded-xl p-4">
-              <h3 className="font-medium text-blue-900 mb-2">Meal Totals</h3>
+            <div className="bg-primary/10 rounded-card p-4">
+              <h3 className="font-medium text-primary mb-2">Meal Totals</h3>
               <div className="grid grid-cols-4 gap-2 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-blue-900">{Math.round(totals.calories)}</div>
-                  <div className="text-xs text-blue-700">kcal</div>
+                  <div className="text-2xl font-bold text-text-primary">{Math.round(totals.calories)}</div>
+                  <div className="text-xs text-primary">kcal</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-900">{Math.round(totals.protein)}</div>
-                  <div className="text-xs text-blue-700">protein</div>
+                  <div className="text-2xl font-bold text-text-primary">{Math.round(totals.protein)}</div>
+                  <div className="text-xs text-primary">protein</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-900">{Math.round(totals.carbs)}</div>
-                  <div className="text-xs text-blue-700">carbs</div>
+                  <div className="text-2xl font-bold text-text-primary">{Math.round(totals.carbs)}</div>
+                  <div className="text-xs text-primary">carbs</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-900">{Math.round(totals.fat)}</div>
-                  <div className="text-xs text-blue-700">fat</div>
+                  <div className="text-2xl font-bold text-text-primary">{Math.round(totals.fat)}</div>
+                  <div className="text-xs text-primary">fat</div>
                 </div>
               </div>
             </div>
@@ -434,10 +443,10 @@ export default function FoodRecognition() {
             {/* Log Button */}
             <button
               onClick={logMeal}
-              disabled={status === 'logging' || editedItems.length === 0}
-              className="w-full py-4 bg-green-600 text-white rounded-xl font-medium disabled:opacity-50"
+              disabled={(status as string) === 'logging' || editedItems.length === 0}
+              className="w-full py-4 bg-success text-white rounded-card font-medium disabled:opacity-50"
             >
-              {status === 'logging' ? 'Logging...' : 'Log Meal'}
+              {(status as string) === 'logging' ? 'Logging...' : 'Log Meal'}
             </button>
           </div>
         )}

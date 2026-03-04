@@ -329,6 +329,9 @@ std::optional<Workout> WorkoutService::get_workout(
         if (!set_row["rest_seconds"].is_null()) es.rest_seconds = set_row["rest_seconds"].as<int>();
         es.is_pr = set_row["is_pr"].as<bool>();
         if (!set_row["notes"].is_null()) es.notes = set_row["notes"].as<std::string>();
+        if (!set_row["exercise_name"].is_null()) es.exercise_name = set_row["exercise_name"].as<std::string>();
+        if (!set_row["muscle_group"].is_null()) es.muscle_group = set_row["muscle_group"].as<std::string>();
+        if (!set_row["equipment"].is_null()) es.equipment = set_row["equipment"].as<std::string>();
         workout.sets.push_back(es);
     }
 
@@ -491,34 +494,21 @@ AddSetResponse WorkoutService::add_set(
     // Insert the set
     std::string set_id = UUID::generate();
 
-    // Build INSERT with explicit NULL handling for optional fields
-    std::ostringstream insert_query;
-    insert_query << "INSERT INTO exercise_sets "
-                 << "(id, workout_id, exercise_id, set_order, exercise_order, set_type, "
-                 << "reps, weight_kg, duration_seconds, rpe, rest_seconds, is_pr, notes) "
-                 << "VALUES ("
-                 << conn->quote(set_id) << ", "
-                 << conn->quote(workout_id) << ", "
-                 << conn->quote(exercise_id) << ", "
-                 << next_set_order << ", "
-                 << exercise_order << ", "
-                 << conn->quote(set_type) << ", ";
-
-    if (reps) insert_query << *reps; else insert_query << "NULL";
-    insert_query << ", ";
-    if (weight_kg) insert_query << *weight_kg; else insert_query << "NULL";
-    insert_query << ", ";
-    if (duration_seconds) insert_query << *duration_seconds; else insert_query << "NULL";
-    insert_query << ", ";
-    if (rpe) insert_query << *rpe; else insert_query << "NULL";
-    insert_query << ", ";
-    if (rest_seconds) insert_query << *rest_seconds; else insert_query << "NULL";
-    insert_query << ", ";
-    insert_query << (is_pr ? "true" : "false") << ", ";
-    if (notes) insert_query << conn->quote(*notes); else insert_query << "NULL";
-    insert_query << ")";
-
-    txn.exec(insert_query.str());
+    // Use parameterized query for safe insertion
+    txn.exec_params(
+        "INSERT INTO exercise_sets "
+        "(id, workout_id, exercise_id, set_order, exercise_order, set_type, "
+        "reps, weight_kg, duration_seconds, rpe, rest_seconds, is_pr, notes) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+        set_id, workout_id, exercise_id, next_set_order, exercise_order, set_type,
+        reps ? std::optional<int>(*reps) : std::nullopt,
+        weight_kg ? std::optional<double>(*weight_kg) : std::nullopt,
+        duration_seconds ? std::optional<int>(*duration_seconds) : std::nullopt,
+        rpe ? std::optional<double>(*rpe) : std::nullopt,
+        rest_seconds ? std::optional<int>(*rest_seconds) : std::nullopt,
+        is_pr,
+        notes ? std::optional<std::string>(*notes) : std::nullopt
+    );
 
     txn.commit();
 
@@ -582,11 +572,7 @@ std::optional<AddSetResponse> WorkoutService::update_set(
     auto row = existing[0];
     std::string exercise_id = row["exercise_id"].as<std::string>();
 
-    // Build dynamic update
-    std::ostringstream query;
-    query << "UPDATE exercise_sets SET updated_at = NOW()";
-
-    // Use new values or keep existing
+    // Compute final values for PR evaluation
     double final_weight = weight_kg.value_or(
         row["weight_kg"].is_null() ? 0.0 : row["weight_kg"].as<double>()
     );
@@ -594,28 +580,6 @@ std::optional<AddSetResponse> WorkoutService::update_set(
         row["reps"].is_null() ? 0 : row["reps"].as<int>()
     );
     std::string final_set_type = set_type.value_or(row["set_type"].as<std::string>());
-
-    if (weight_kg) {
-        query << ", weight_kg = " << *weight_kg;
-    }
-    if (reps) {
-        query << ", reps = " << *reps;
-    }
-    if (rpe) {
-        query << ", rpe = " << *rpe;
-    }
-    if (set_type) {
-        query << ", set_type = " << conn->quote(*set_type);
-    }
-    if (duration_seconds) {
-        query << ", duration_seconds = " << *duration_seconds;
-    }
-    if (rest_seconds) {
-        query << ", rest_seconds = " << *rest_seconds;
-    }
-    if (notes) {
-        query << ", notes = " << conn->quote(*notes);
-    }
 
     // Re-evaluate PR status
     bool is_pr = false;
@@ -653,10 +617,28 @@ std::optional<AddSetResponse> WorkoutService::update_set(
         }
     }
 
-    query << ", is_pr = " << (is_pr ? "true" : "false");
-    query << " WHERE id = " << conn->quote(set_id);
-
-    txn.exec(query.str());
+    // Use parameterized query - COALESCE keeps existing values when param is NULL
+    txn.exec_params(
+        "UPDATE exercise_sets SET updated_at = NOW(), "
+        "weight_kg = COALESCE($1, weight_kg), "
+        "reps = COALESCE($2, reps), "
+        "rpe = COALESCE($3, rpe), "
+        "set_type = COALESCE($4, set_type), "
+        "duration_seconds = COALESCE($5, duration_seconds), "
+        "rest_seconds = COALESCE($6, rest_seconds), "
+        "notes = COALESCE($7, notes), "
+        "is_pr = $8 "
+        "WHERE id = $9",
+        weight_kg ? std::optional<double>(*weight_kg) : std::nullopt,
+        reps ? std::optional<int>(*reps) : std::nullopt,
+        rpe ? std::optional<double>(*rpe) : std::nullopt,
+        set_type ? std::optional<std::string>(*set_type) : std::nullopt,
+        duration_seconds ? std::optional<int>(*duration_seconds) : std::nullopt,
+        rest_seconds ? std::optional<int>(*rest_seconds) : std::nullopt,
+        notes ? std::optional<std::string>(*notes) : std::nullopt,
+        is_pr,
+        set_id
+    );
     txn.commit();
 
     // Build response with updated values

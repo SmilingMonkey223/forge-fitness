@@ -9,8 +9,10 @@ namespace forge {
 static std::string today_date_str() {
     auto now = std::chrono::system_clock::now();
     auto t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf{};
+    localtime_r(&t, &tm_buf);
     char buf[11];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d", std::localtime(&t));
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_buf);
     return std::string(buf);
 }
 
@@ -29,8 +31,10 @@ static std::string date_offset(const std::string& base, int days) {
     auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
     tp += std::chrono::hours(24 * days);
     auto t = std::chrono::system_clock::to_time_t(tp);
+    std::tm tm_buf{};
+    localtime_r(&t, &tm_buf);
     char buf[11];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d", std::localtime(&t));
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_buf);
     return std::string(buf);
 }
 

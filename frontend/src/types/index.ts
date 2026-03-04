@@ -45,6 +45,9 @@ export interface ExerciseSet {
   rest_seconds?: number
   is_pr: boolean
   notes?: string
+  exercise_name?: string
+  muscle_group?: string
+  equipment?: string
 }
 
 export interface Workout {
@@ -207,18 +210,20 @@ export interface FoodRecognitionResult {
 }
 
 export interface WeightData {
-  date: string
-  scale_weight_kg: number
-  trend_weight_kg?: number
+  id: string
+  weight_kg: number
+  logged_at: string
+  notes?: string
 }
 
 export interface WeightTrend {
-  current_trend_weight_kg: number
-  weekly_rate_kg: number
-  goal_weight_kg: number
-  progress_percent: number
-  estimated_days_to_goal?: number
-  is_reliable: boolean
+  current_weight: number
+  start_weight: number
+  change_kg: number
+  change_percent: number
+  avg_weekly_change: number
+  trend_direction: 'losing' | 'gaining' | 'stable'
+  data_points: number
 }
 
 export interface WorkoutSummary {

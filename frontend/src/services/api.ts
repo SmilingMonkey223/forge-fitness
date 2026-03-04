@@ -34,6 +34,8 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
 class ApiClient {
   private accessToken: string | null = null
+  private refreshToken: string | null = null
+  private refreshPromise: Promise<boolean> | null = null
 
   setAccessToken(token: string | null) {
     this.accessToken = token
@@ -44,11 +46,46 @@ class ApiClient {
     }
   }
 
+  setRefreshToken(token: string | null) {
+    this.refreshToken = token
+    if (token) {
+      localStorage.setItem('refresh_token', token)
+    } else {
+      localStorage.removeItem('refresh_token')
+    }
+  }
+
   getAccessToken(): string | null {
     if (!this.accessToken) {
       this.accessToken = localStorage.getItem('access_token')
     }
     return this.accessToken
+  }
+
+  getRefreshToken(): string | null {
+    if (!this.refreshToken) {
+      this.refreshToken = localStorage.getItem('refresh_token')
+    }
+    return this.refreshToken
+  }
+
+  private async tryRefreshToken(): Promise<boolean> {
+    const rt = this.getRefreshToken()
+    if (!rt) return false
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      this.setAccessToken(data.access_token)
+      if (data.refresh_token) this.setRefreshToken(data.refresh_token)
+      return true
+    } catch {
+      return false
+    }
   }
 
   async request<T>(
@@ -70,6 +107,24 @@ class ApiClient {
       headers,
     })
 
+    if (response.status === 401 && !endpoint.startsWith('/api/auth/')) {
+      if (!this.refreshPromise) {
+        this.refreshPromise = this.tryRefreshToken().finally(() => {
+          this.refreshPromise = null
+        })
+      }
+      const refreshed = await this.refreshPromise
+      if (refreshed) {
+        headers['Authorization'] = `Bearer ${this.getAccessToken()}`
+        const retry = await fetch(`${API_BASE}${endpoint}`, { ...options, headers })
+        if (!retry.ok) {
+          const error: ApiError = await retry.json()
+          throw new Error(error.error.code || 'REQUEST_FAILED')
+        }
+        return retry.json()
+      }
+    }
+
     if (!response.ok) {
       const error: ApiError = await response.json()
       throw new Error(error.error.code || 'REQUEST_FAILED')
@@ -90,6 +145,7 @@ class ApiClient {
       body: JSON.stringify(data),
     })
     this.setAccessToken(response.access_token)
+    this.setRefreshToken(response.refresh_token)
     return response
   }
 
@@ -102,11 +158,13 @@ class ApiClient {
       body: JSON.stringify(data),
     })
     this.setAccessToken(response.access_token)
+    this.setRefreshToken(response.refresh_token)
     return response
   }
 
   async logout() {
     this.setAccessToken(null)
+    this.setRefreshToken(null)
   }
 
   // Profile endpoints
@@ -297,6 +355,12 @@ class ApiClient {
 
   async getWeightTrend(): Promise<WeightTrend> {
     return this.request<WeightTrend>('/api/weight/trend')
+  }
+
+  async deleteWeight(id: string): Promise<void> {
+    return this.request<void>(`/api/weight/${id}`, {
+      method: 'DELETE',
+    })
   }
 
   // Analytics endpoints

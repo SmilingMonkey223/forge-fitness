@@ -151,4 +151,20 @@ WeightTrend WeightService::get_weight_trend(const std::string& user_id)
     return trend;
 }
 
+bool WeightService::delete_weight(
+    const std::string& weight_id,
+    const std::string& user_id
+) {
+    auto conn = db_.get_connection();
+    pqxx::work txn(*conn);
+
+    auto result = txn.exec_params(
+        "DELETE FROM weight_logs WHERE id = $1 AND user_id = $2",
+        weight_id, user_id
+    );
+
+    txn.commit();
+    return result.affected_rows() > 0;
+}
+
 } // namespace forge

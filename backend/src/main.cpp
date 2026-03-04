@@ -2,6 +2,7 @@
 #include "../include/config.hpp"
 #include "../include/database.hpp"
 #include "../include/jwt.hpp"
+#include "../include/auth_service.hpp"
 #include "../include/profile_service.hpp"
 #include "../include/workout_service.hpp"
 #include "../include/weight_service.hpp"
@@ -12,6 +13,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -228,12 +230,19 @@ int main() {
                     ctx.user_id, name, notes
                 );
 
+                // Return full workout object as frontend expects
+                auto workout = workout_service.get_workout(workout_id, ctx.user_id);
                 res.code = 201;
-                res.write(json({
-                    {"id", workout_id},
-                    {"status", "in_progress"},
-                    {"message", "Workout started"}
-                }).dump());
+                if (workout) {
+                    res.write(workout->to_json().dump());
+                } else {
+                    res.write(json({
+                        {"id", workout_id},
+                        {"status", "in_progress"},
+                        {"sets", json::array()},
+                        {"name", name.value_or("Workout")}
+                    }).dump());
+                }
                 res.end();
 
             } catch (const std::exception& e) {
@@ -255,8 +264,8 @@ int main() {
             try {
                 auto limit_param = req.url_params.get("limit");
                 auto offset_param = req.url_params.get("offset");
-                int limit = limit_param ? std::stoi(limit_param) : 20;
-                int offset = offset_param ? std::stoi(offset_param) : 0;
+                int limit = limit_param ? std::min(std::stoi(limit_param), 100) : 20;
+                int offset = offset_param ? std::max(std::stoi(offset_param), 0) : 0;
 
                 auto workouts = workout_service.list_workouts(ctx.user_id, limit, offset);
 
@@ -265,11 +274,7 @@ int main() {
                     workouts_json.push_back(w.to_json());
                 }
 
-                res.write(json({
-                    {"workouts", workouts_json},
-                    {"limit", limit},
-                    {"offset", offset}
-                }).dump());
+                res.write(workouts_json.dump());
                 res.end();
 
             } catch (const std::exception& e) {
@@ -421,6 +426,20 @@ int main() {
 
                 std::string exercise_id = body["exercise_id"];
                 std::string set_type = body.value("set_type", "working");
+
+                // Validate set_type
+                if (set_type != "working" && set_type != "warmup" &&
+                    set_type != "dropset" && set_type != "failure") {
+                    res.code = 400;
+                    res.write(json({
+                        {"error", {
+                            {"code", "INVALID_SET_TYPE"},
+                            {"message", "set_type must be one of: working, warmup, dropset, failure"}
+                        }}
+                    }).dump());
+                    res.end();
+                    return;
+                }
 
                 std::optional<double> weight_kg;
                 std::optional<int> reps;
@@ -623,12 +642,7 @@ int main() {
                     exercises_json.push_back(ex.to_json());
                 }
 
-                return crow::response(200, json({
-                    {"exercises", exercises_json},
-                    {"count", static_cast<int>(exercises.size())},
-                    {"limit", limit},
-                    {"offset", offset}
-                }).dump());
+                return crow::response(200, exercises_json.dump());
 
             } catch (const std::exception& e) {
                 return crow::response(500, json({
@@ -684,18 +698,7 @@ int main() {
                     history_json.push_back(entry.to_json());
                 }
 
-                auto best_1rm = workout_service.get_best_1rm(exercise_id, ctx.user_id);
-
-                json response_data = {
-                    {"exercise_id", exercise_id},
-                    {"history", history_json},
-                    {"session_count", static_cast<int>(history.size())}
-                };
-                if (best_1rm) {
-                    response_data["best_estimated_1rm"] = *best_1rm;
-                }
-
-                res.write(response_data.dump());
+                res.write(history_json.dump());
                 res.end();
 
             } catch (const std::exception& e) {
@@ -949,6 +952,31 @@ int main() {
                         {"code", "INTERNAL_ERROR"},
                         {"message", e.what()}
                     }}
+                }).dump());
+                res.end();
+            }
+        });
+
+        // DELETE /api/weight/:id - Delete a weight entry
+        CROW_ROUTE(app, "/api/weight/<string>").methods("DELETE"_method)
+        ([&weight_service](const crow::request&, crow::response& res,
+          forge::AuthMiddleware::context& ctx, const std::string& weight_id) {
+            try {
+                bool deleted = weight_service.delete_weight(weight_id, ctx.user_id);
+                if (!deleted) {
+                    res.code = 404;
+                    res.write(json({
+                        {"error", {{"code", "NOT_FOUND"}, {"message", "Weight entry not found"}}}
+                    }).dump());
+                    res.end();
+                    return;
+                }
+                res.write(json({{"success", true}}).dump());
+                res.end();
+            } catch (const std::exception& e) {
+                res.code = 500;
+                res.write(json({
+                    {"error", {{"code", "INTERNAL_ERROR"}, {"message", e.what()}}}
                 }).dump());
                 res.end();
             }
@@ -1620,16 +1648,23 @@ int main() {
 
         // POST /api/routines/:id/start - Start workout from routine
         CROW_ROUTE(app, "/api/routines/<string>/start").methods("POST"_method)
-        ([&routine_service](const crow::request&, crow::response& res,
+        ([&routine_service, &workout_service](const crow::request&, crow::response& res,
           forge::AuthMiddleware::context& ctx, const std::string& routine_id) {
             try {
                 std::string workout_id = routine_service.start_from_routine(ctx.user_id, routine_id);
+
+                // Return full workout object as frontend expects
+                auto workout = workout_service.get_workout(workout_id, ctx.user_id);
                 res.code = 201;
-                res.write(json({
-                    {"id", workout_id},
-                    {"status", "in_progress"},
-                    {"message", "Workout started from routine"}
-                }).dump());
+                if (workout) {
+                    res.write(workout->to_json().dump());
+                } else {
+                    res.write(json({
+                        {"id", workout_id},
+                        {"status", "in_progress"},
+                        {"sets", json::array()}
+                    }).dump());
+                }
                 res.end();
             } catch (const std::invalid_argument& e) {
                 res.code = 404;
